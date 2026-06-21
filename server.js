@@ -58,10 +58,27 @@ function normalizePayload(payload) {
     payload.result ??
     payload;
 
+  if (
+    candidate &&
+    typeof candidate === "object" &&
+    (
+      candidate.generation_ready !== undefined ||
+      candidate.vehicle ||
+      candidate.carrier ||
+      candidate.driver ||
+      candidate.supplier ||
+      candidate.client ||
+      candidate.route ||
+      candidate.cargo
+    )
+  ) {
+    return candidate;
+  }
+
   return (
-    candidate.document ??
     candidate.correct_document ??
     candidate.output ??
+    candidate.document ??
     candidate
   );
 }
@@ -177,8 +194,8 @@ function clearCargoRows(sheet) {
 function cargoItemsFrom(data) {
   const items =
     firstValue(data, [
-      "cargo_items",
       "cargo.items",
+      "cargo_items",
       "items",
     ], []);
 
@@ -257,6 +274,7 @@ function fillCargoTable(sheet, data) {
       sheet,
       `G${row}`,
       valueFromItem(item, [
+        "quantity_places",
         "places_count",
         "quantity",
         "places",
@@ -331,6 +349,7 @@ function fillCargoTable(sheet, data) {
     sheet,
     "G34",
     firstValue(data, [
+      "cargo.total_places",
       "places_count",
       "cargo_total_places",
       "totals.places_count",
@@ -345,6 +364,8 @@ function fillCargoTable(sheet, data) {
     sheet,
     "I34",
     firstValue(data, [
+      "cargo.total_sum_with_vat",
+      "cargo.vat_amount",
       "total_sum_with_vat",
       "totals.total_sum_with_vat",
       "vat_amount",
@@ -359,6 +380,7 @@ function fillCargoTable(sheet, data) {
     sheet,
     "L34",
     firstValue(data, [
+      "cargo.gross_weight",
       "gross_weight",
       "totals.gross_weight",
     ]),
@@ -371,6 +393,7 @@ function fillCargoTable(sheet, data) {
 
 function buildTransportWeightsText(data) {
   const raw = firstValue(data, [
+    "vehicle.raw_transport_weights_text",
     "raw_transport_weights_text",
   ]);
 
@@ -378,12 +401,15 @@ function buildTransportWeightsText(data) {
 
   const values = [
     firstValue(data, [
+      "vehicle.transport_empty_weight_total",
       "transport_empty_weight_total",
     ]),
     firstValue(data, [
+      "vehicle.transport_max_loaded_weight",
       "transport_max_loaded_weight",
     ]),
     firstValue(data, [
+      "vehicle.transport_actual_gross_weight",
       "transport_actual_gross_weight",
     ]),
   ].map(clean);
@@ -398,6 +424,8 @@ function buildTransportWeightsText(data) {
 function fillWorkbook(sheet, data) {
   const documentNumber = clean(
     firstValue(data, [
+      "document.number",
+      "document.number",
       "document_number",
       "ttn_number",
       "number",
@@ -406,6 +434,8 @@ function fillWorkbook(sheet, data) {
 
   const documentDate = clean(
     firstValue(data, [
+      "document.date",
+      "document.date",
       "document_date",
       "ttn_date",
       "date",
@@ -433,6 +463,7 @@ function fillWorkbook(sheet, data) {
     sheet,
     "C5",
     firstValue(data, [
+      "document.place",
       "document_place",
       "place",
     ])
@@ -440,6 +471,7 @@ function fillWorkbook(sheet, data) {
 
   const automobile = clean(
     firstValue(data, [
+      "vehicle.automobile",
       "automobile",
       "truck",
       "expected.automobile",
@@ -448,6 +480,7 @@ function fillWorkbook(sheet, data) {
 
   const trailer = clean(
     firstValue(data, [
+      "vehicle.trailer",
       "trailer",
       "expected.trailer",
     ])
@@ -455,6 +488,7 @@ function fillWorkbook(sheet, data) {
 
   const transportationType = clean(
     firstValue(data, [
+      "transportation.type",
       "transportation_type",
       "transportation_kind",
     ])
@@ -488,6 +522,7 @@ function fillWorkbook(sheet, data) {
     sheet,
     "C9",
     firstValue(data, [
+      "carrier.text",
       "carrier",
       "expected.carrier",
     ])
@@ -497,6 +532,7 @@ function fillWorkbook(sheet, data) {
     sheet,
     "H9",
     firstValue(data, [
+      "driver.driver_field",
       "driver",
       "expected.driver",
     ])
@@ -506,6 +542,7 @@ function fillWorkbook(sheet, data) {
     sheet,
     "C11",
     firstValue(data, [
+      "supplier.text",
       "supplier",
       "sender",
     ])
@@ -515,6 +552,7 @@ function fillWorkbook(sheet, data) {
     sheet,
     "C13",
     firstValue(data, [
+      "client.text",
       "client",
       "customer",
       "receiver",
@@ -525,6 +563,7 @@ function fillWorkbook(sheet, data) {
     sheet,
     "C15",
     firstValue(data, [
+      "route.loading_point",
       "loading_point",
       "route_from",
     ])
@@ -534,6 +573,7 @@ function fillWorkbook(sheet, data) {
     sheet,
     "J15",
     firstValue(data, [
+      "route.unloading_point",
       "unloading_point",
       "route_to",
     ])
@@ -543,6 +583,7 @@ function fillWorkbook(sheet, data) {
     sheet,
     "C17",
     firstValue(data, [
+      "cargo.places_count_words",
       "places_count_words",
     ]),
     {
@@ -554,6 +595,7 @@ function fillWorkbook(sheet, data) {
     sheet,
     "F17",
     firstValue(data, [
+      "cargo.gross_weight_words",
       "gross_weight_words",
     ]),
     {
@@ -565,8 +607,10 @@ function fillWorkbook(sheet, data) {
     sheet,
     "J17",
     firstValue(data, [
+      "driver.received_driver_field",
       "received_driver",
       "received_driver_full_name",
+      "driver.full_name",
       "driver_full_name",
     ])
   );
@@ -574,7 +618,7 @@ function fillWorkbook(sheet, data) {
   setCell(
     sheet,
     "F19",
-    firstValue(data, ["length"]),
+    firstValue(data, ["dimensions.length", "length"]),
     {
       horizontal: "center",
       wrapText: false,
@@ -584,7 +628,7 @@ function fillWorkbook(sheet, data) {
   setCell(
     sheet,
     "G19",
-    firstValue(data, ["width"]),
+    firstValue(data, ["dimensions.width", "width"]),
     {
       horizontal: "center",
       wrapText: false,
@@ -594,7 +638,7 @@ function fillWorkbook(sheet, data) {
   setCell(
     sheet,
     "I19",
-    firstValue(data, ["height"]),
+    firstValue(data, ["dimensions.height", "height"]),
     {
       horizontal: "center",
       wrapText: false,
@@ -615,6 +659,7 @@ function fillWorkbook(sheet, data) {
     sheet,
     "D21",
     firstValue(data, [
+      "cargo.total_sum_words",
       "total_sum_words",
     ])
   );
@@ -623,6 +668,7 @@ function fillWorkbook(sheet, data) {
     sheet,
     "K21",
     firstValue(data, [
+      "cargo.vat_amount_text",
       "vat_amount_text",
       "vat_amount_words",
     ]),
@@ -636,6 +682,7 @@ function fillWorkbook(sheet, data) {
     sheet,
     "D23",
     firstValue(data, [
+      "document.cargo_document_text",
       "cargo_document_text",
     ])
   );

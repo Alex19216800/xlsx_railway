@@ -1,8 +1,8 @@
 {
   "name": "ttn-xlsx-service",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Railway service for filling the Ukrainian TTN XLSX template",
+  "description": "Railway service v2 for nested correct_ttn_data",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {

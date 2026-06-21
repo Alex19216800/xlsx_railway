@@ -1,4 +1,4 @@
-# TTN XLSX Service
+# TTN XLSX Service v2
 
 Railway-сервіс для заповнення XLSX-шаблону товарно-транспортної накладної.
 
@@ -80,3 +80,13 @@ Response:
 - Рядок 34 — підсумки.
 - Шаблон повинен містити аркуш `TTN`.
 - Якщо аркуша `TTN` немає, використовується перший аркуш.
+
+
+## Fix in v2
+
+The service now reads the full nested `correct_ttn_data` object instead of
+discarding everything except `correct_ttn_data.document`.
+
+Supported nested sections:
+`document`, `vehicle`, `transportation`, `carrier`, `driver`,
+`supplier`, `client`, `route`, `dimensions`, `cargo`.
