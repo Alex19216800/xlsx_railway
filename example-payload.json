@@ -1,0 +1,44 @@
+{
+  "correct_ttn_data": {
+    "document_number": "8417",
+    "document_date": "20.04.2026",
+    "document_place": "с. Великі Гаї, вул. Галицька 180",
+    "automobile": "SCANIA G420 LA4X2MNA ВАНТАЖНИЙ СІДЛОВИЙ ТЯГАЧ KP4272AC",
+    "trailer": "SCHMITZ S 01 НАПІВПРИЧІП Н/ПР-БОРТОВИЙ-ТЕНТОВАНИЙ AP3500XF",
+    "transportation_type": "за покілометровим тарифом",
+    "carrier": "Фізична особа-підприємець Фатіхов Сергій Альфирович, код за ЄДРПОУ 3255914536",
+    "driver": "Гаврилович Сергій Олександрович, ВХК 428642",
+    "supplier": "ПРИВАТНЕ АКЦІОНЕРНЕ ТОВАРИСТВО \"Птахофабрика Тернопільська\", код ЄДРПОУ 03369177",
+    "client": "Товариство з обмеженою відповідальністю \"ОВОПРАЙМ\", код ЄДРПОУ 43559004",
+    "loading_point": "с. Великі Гаї, вул. Галицька 180",
+    "unloading_point": "Дніпропетровська обл., м. Дніпро, вул. Автопаркова, 4",
+    "places_count_words": "Вісімсот сорок",
+    "gross_weight_words": "Двадцять одна тонна",
+    "received_driver": "Гаврилович Сергій Олександрович",
+    "length": "19,4",
+    "width": "2,55",
+    "height": "4",
+    "transport_empty_weight_total": "15,1",
+    "transport_max_loaded_weight": "53,6",
+    "transport_actual_gross_weight": "36,1",
+    "total_sum_words": "Один мільйон триста вісімдесят дев'ять тисяч вісімсот тридцять гривень 40 копійок",
+    "vat_amount_text": "231 638,40 грн",
+    "cargo_document_text": "Видаткова накладна № 8417 від 20.04.2026",
+    "cargo_items": [
+      {
+        "name": "Яйце С-0 (-) червоне",
+        "quantity": "840",
+        "unit": "шт",
+        "temperature": "від 0 до +8",
+        "price_without_vat": "3,93",
+        "total_with_vat": "1 389 830,40",
+        "package_type": "ящики",
+        "cargo_document": "Видаткова накладна № 8417",
+        "gross_weight": "21"
+      }
+    ],
+    "places_count": "840",
+    "gross_weight": "21",
+    "total_sum_with_vat": "1 389 830,40"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "ttn-xlsx-service",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Railway service for filling the Ukrainian TTN XLSX template",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "express": "^4.21.2",
+    "multer": "^1.4.5-lts.1"
+  }
+}
