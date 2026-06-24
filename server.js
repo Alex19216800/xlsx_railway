@@ -19,6 +19,58 @@ function clean(value) {
     .trim();
 }
 
+function stripDimensionUnit(value) {
+  return clean(value)
+    .replace(
+      /\s*(?:м\.?|метр|метра|метрів)\s*$/iu,
+      ""
+    )
+    .trim();
+}
+
+function stripWordsMarker(value) {
+  return clean(value)
+    .replace(
+      /\(\s*словами(?:\s*,\s*з\s+урахуванням\s+ПДВ)?\s*\)/giu,
+      ""
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildReceivedDriverText(data) {
+  const fullName = clean(
+    firstValue(data, [
+      "driver.full_name",
+      "received_driver_full_name",
+      "driver_full_name",
+      "received_driver",
+    ])
+  );
+
+  const eddr = clean(
+    firstValue(data, [
+      "driver.eddr",
+      "received_driver_eddr",
+      "driver_eddr",
+      "eddr",
+    ])
+  );
+
+  /*
+    У полі «отримав водій/експедитор»:
+    - ПІБ;
+    - ЄДДР, якщо він є;
+    - без номера посвідчення водія.
+  */
+  return [
+    fullName,
+    eddr
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 function getByPath(object, path) {
   return String(path)
     .split(".")
@@ -582,10 +634,12 @@ function fillWorkbook(sheet, data) {
   setCell(
     sheet,
     "C17",
-    firstValue(data, [
-      "cargo.places_count_words",
-      "places_count_words",
-    ]),
+    stripWordsMarker(
+      firstValue(data, [
+        "cargo.places_count_words",
+        "places_count_words",
+      ])
+    ),
     {
       horizontal: "center",
     }
@@ -594,10 +648,12 @@ function fillWorkbook(sheet, data) {
   setCell(
     sheet,
     "F17",
-    firstValue(data, [
-      "cargo.gross_weight_words",
-      "gross_weight_words",
-    ]),
+    stripWordsMarker(
+      firstValue(data, [
+        "cargo.gross_weight_words",
+        "gross_weight_words",
+      ])
+    ),
     {
       horizontal: "center",
     }
@@ -606,19 +662,18 @@ function fillWorkbook(sheet, data) {
   setCell(
     sheet,
     "J17",
-    firstValue(data, [
-      "driver.received_driver_field",
-      "received_driver",
-      "received_driver_full_name",
-      "driver.full_name",
-      "driver_full_name",
-    ])
+    buildReceivedDriverText(data)
   );
 
   setCell(
     sheet,
     "F19",
-    firstValue(data, ["dimensions.length", "length"]),
+    stripDimensionUnit(
+      firstValue(
+        data,
+        ["dimensions.length", "length"]
+      )
+    ),
     {
       horizontal: "center",
       wrapText: false,
@@ -628,7 +683,12 @@ function fillWorkbook(sheet, data) {
   setCell(
     sheet,
     "G19",
-    firstValue(data, ["dimensions.width", "width"]),
+    stripDimensionUnit(
+      firstValue(
+        data,
+        ["dimensions.width", "width"]
+      )
+    ),
     {
       horizontal: "center",
       wrapText: false,
@@ -638,7 +698,12 @@ function fillWorkbook(sheet, data) {
   setCell(
     sheet,
     "I19",
-    firstValue(data, ["dimensions.height", "height"]),
+    stripDimensionUnit(
+      firstValue(
+        data,
+        ["dimensions.height", "height"]
+      )
+    ),
     {
       horizontal: "center",
       wrapText: false,
@@ -658,10 +723,12 @@ function fillWorkbook(sheet, data) {
   setCell(
     sheet,
     "D21",
-    firstValue(data, [
-      "cargo.total_sum_words",
-      "total_sum_words",
-    ])
+    stripWordsMarker(
+      firstValue(data, [
+        "cargo.total_sum_words",
+        "total_sum_words",
+      ])
+    )
   );
 
   setCell(
@@ -716,6 +783,7 @@ app.get("/health", (req, res) => {
   res.json({
     ok: true,
     service: "ttn-xlsx-service",
+    version: "3.0.0",
   });
 });
 
@@ -779,6 +847,7 @@ app.post(
 
       const documentNumber = clean(
         firstValue(data, [
+          "document.number",
           "document_number",
           "ttn_number",
           "number",
@@ -787,6 +856,7 @@ app.post(
 
       const documentDate = clean(
         firstValue(data, [
+          "document.date",
           "document_date",
           "ttn_date",
           "date",
@@ -837,6 +907,6 @@ app.post(
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(
-    `TTN XLSX service is running on port ${PORT}`
+    `TTN XLSX service v3.0.0 is running on port ${PORT}`
   );
 });

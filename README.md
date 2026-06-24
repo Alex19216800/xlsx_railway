@@ -1,4 +1,4 @@
-# TTN XLSX Service v2
+# TTN XLSX Service v3
 
 Railway-сервіс для заповнення XLSX-шаблону товарно-транспортної накладної.
 
@@ -90,3 +90,12 @@ discarding everything except `correct_ttn_data.document`.
 Supported nested sections:
 `document`, `vehicle`, `transportation`, `carrier`, `driver`,
 `supplier`, `client`, `route`, `dimensions`, `cargo`.
+
+
+## Зміни v3
+
+1. Довжина, ширина та висота записуються без `м`.
+2. У полі «отримав водій/експедитор» записуються ПІБ і ЄДДР без посвідчення.
+3. Із текстових полів видаляється службовий напис `(словами)`.
+4. Неправильний або відсутній «Вид перевезень» не блокує створення XLSX.
+5. `/health` повертає `"version": "3.0.0"`.
