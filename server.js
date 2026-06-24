@@ -226,6 +226,63 @@ function setCell(sheet, address, value, options = {}) {
   };
 }
 
+function applyTransportationWarning(
+  sheet,
+  transportationType,
+  isValid,
+  warningText,
+  allowedValues
+) {
+  const cell = sheet.getCell("H7");
+
+  if (isValid) {
+    return;
+  }
+
+  const visibleValue = clean(transportationType);
+
+  cell.value = visibleValue
+    ? `Вид перевезень ⚠ ${visibleValue}`
+    : "Вид перевезень ⚠ НЕ ЗАПОВНЕНО";
+
+  cell.font = {
+    ...(cell.font || {}),
+    bold: true,
+    color: {
+      argb: "FF9C0006",
+    },
+  };
+
+  cell.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: {
+      argb: "FFFFC7CE",
+    },
+  };
+
+  cell.alignment = {
+    ...(cell.alignment || {}),
+    wrapText: true,
+    vertical: "center",
+    horizontal: "left",
+  };
+
+  const allowedText = Array.isArray(allowedValues)
+    ? allowedValues.filter(Boolean).join("; ")
+    : "";
+
+  const noteParts = [
+    clean(warningText) ||
+      "Некоректне або відсутнє значення поля «Вид перевезень».",
+    allowedText
+      ? `Допустимі значення: ${allowedText}.`
+      : "",
+  ].filter(Boolean);
+
+  cell.note = noteParts.join("\n");
+}
+
 function clearCargoRows(sheet) {
   const columns = [
     "A", "B", "C", "D", "E", "F",
@@ -546,6 +603,24 @@ function fillWorkbook(sheet, data) {
     ])
   );
 
+  const transportationIsValid =
+    getByPath(
+      data,
+      "transportation.is_valid"
+    ) === true;
+
+  const transportationWarning = clean(
+    firstValue(data, [
+      "transportation.warning",
+    ])
+  );
+
+  const transportationAllowedValues =
+    getByPath(
+      data,
+      "transportation.allowed_values"
+    );
+
   setCell(
     sheet,
     "A7",
@@ -568,6 +643,14 @@ function fillWorkbook(sheet, data) {
     transportationType
       ? `Вид перевезень ${transportationType}`
       : "Вид перевезень"
+  );
+
+  applyTransportationWarning(
+    sheet,
+    transportationType,
+    transportationIsValid,
+    transportationWarning,
+    transportationAllowedValues
   );
 
   setCell(
@@ -783,7 +866,7 @@ app.get("/health", (req, res) => {
   res.json({
     ok: true,
     service: "ttn-xlsx-service",
-    version: "3.0.0",
+    version: "4.0.0",
   });
 });
 
@@ -907,6 +990,6 @@ app.post(
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(
-    `TTN XLSX service v3.0.0 is running on port ${PORT}`
+    `TTN XLSX service v4.0.0 is running on port ${PORT}`
   );
 });

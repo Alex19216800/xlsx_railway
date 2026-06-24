@@ -1,8 +1,8 @@
 {
   "name": "ttn-xlsx-service",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "private": true,
-  "description": "Railway TTN XLSX service v3 with corrected template formatting",
+  "description": "Railway TTN XLSX service v4 with transportation type warning",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
