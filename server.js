@@ -226,33 +226,47 @@ function setCell(sheet, address, value, options = {}) {
   };
 }
 
+function cloneStyle(value) {
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  return JSON.parse(JSON.stringify(value));
+}
+
 function applyTransportationWarning(
   sheet,
   transportationType,
-  isValid,
-  warningText,
-  allowedValues
+  isValid
 ) {
-  const cell = sheet.getCell("H7");
-
   if (isValid) {
     return;
   }
 
-  const visibleValue = clean(transportationType);
+  const cell = sheet.getCell("H7");
 
-  cell.value = visibleValue
-    ? `Вид перевезень ⚠ ${visibleValue}`
-    : "Вид перевезень ⚠ НЕ ЗАПОВНЕНО";
+  /*
+    У шаблоні кілька підписів використовують спільний об'єкт стилю.
+    Якщо змінити fill/font напряму, ExcelJS може застосувати зміну
+    до інших клітинок із тим самим стилем.
 
-  cell.font = {
-    ...(cell.font || {}),
-    bold: true,
-    color: {
-      argb: "FF9C0006",
-    },
-  };
+    Спочатку повністю відокремлюємо стиль H7 від спільного стилю,
+    а потім змінюємо тільки фон.
+  */
+  cell.style = cloneStyle(cell.style || {});
 
+  /*
+    Не змінюємо:
+    - текст;
+    - шрифт;
+    - колір шрифту;
+    - жирність;
+    - вирівнювання;
+    - інші поля шаблону.
+
+    Підсвічується тільки merged-поле H7:J7
+    світло-червоним фоном.
+  */
   cell.fill = {
     type: "pattern",
     pattern: "solid",
@@ -260,27 +274,6 @@ function applyTransportationWarning(
       argb: "FFFFC7CE",
     },
   };
-
-  cell.alignment = {
-    ...(cell.alignment || {}),
-    wrapText: true,
-    vertical: "center",
-    horizontal: "left",
-  };
-
-  const allowedText = Array.isArray(allowedValues)
-    ? allowedValues.filter(Boolean).join("; ")
-    : "";
-
-  const noteParts = [
-    clean(warningText) ||
-      "Некоректне або відсутнє значення поля «Вид перевезень».",
-    allowedText
-      ? `Допустимі значення: ${allowedText}.`
-      : "",
-  ].filter(Boolean);
-
-  cell.note = noteParts.join("\n");
 }
 
 function clearCargoRows(sheet) {
@@ -609,18 +602,6 @@ function fillWorkbook(sheet, data) {
       "transportation.is_valid"
     ) === true;
 
-  const transportationWarning = clean(
-    firstValue(data, [
-      "transportation.warning",
-    ])
-  );
-
-  const transportationAllowedValues =
-    getByPath(
-      data,
-      "transportation.allowed_values"
-    );
-
   setCell(
     sheet,
     "A7",
@@ -648,9 +629,7 @@ function fillWorkbook(sheet, data) {
   applyTransportationWarning(
     sheet,
     transportationType,
-    transportationIsValid,
-    transportationWarning,
-    transportationAllowedValues
+    transportationIsValid
   );
 
   setCell(
@@ -866,7 +845,7 @@ app.get("/health", (req, res) => {
   res.json({
     ok: true,
     service: "ttn-xlsx-service",
-    version: "4.0.0",
+    version: "5.0.0",
   });
 });
 
@@ -990,6 +969,6 @@ app.post(
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(
-    `TTN XLSX service v4.0.0 is running on port ${PORT}`
+    `TTN XLSX service v5.0.0 is running on port ${PORT}`
   );
 });
