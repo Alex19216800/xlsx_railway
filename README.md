@@ -127,3 +127,88 @@ Supported nested sections:
 - Перед зміною фону стиль `H7` клонуються, щоб не змінювати інші
   клітинки, які в шаблоні використовують спільний стиль.
 - `/health` повертає `"version": "5.0.0"`.
+
+
+---
+
+## Endpoint заявки
+
+### POST /fill-application
+
+Заповнює XLSX-шаблон договору-заявки на перевезення.
+
+Може працювати у двох режимах.
+
+### Варіант 1: JSON без передачі шаблону
+
+Сервіс використовує вбудований шаблон:
+
+- `templates/zayavka_perevezennia_template.xlsx`
+
+Request:
+
+```json
+{
+  "filename": "Заявка_09.07.2026_Дніпро_Дніпро.xlsx",
+  "returnJson": true,
+  "application_data": {
+    "application_number": "09/07",
+    "application_date": "09.07.2026",
+    "customer_name": "ТОВ ОВОПРАЙМ",
+    "carrier_name": "ФОП ...",
+    "route_from": "Дніпро",
+    "route_to": "Дніпро",
+    "price_text": "2500,00 грн",
+    "vehicle_driver_text": "DAF ..."
+  }
+}
+```
+
+Якщо `returnJson: true`, відповідь:
+
+```json
+{
+  "ok": true,
+  "filename": "Заявка_09.07.2026_Дніпро_Дніпро.xlsx",
+  "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "file_base64": "..."
+}
+```
+
+Цей режим зручний для адмінки: n8n просто повертає JSON в `Respond to Webhook`, а фронт завантажує файл із `file_base64`.
+
+### Варіант 2: multipart/form-data з власним шаблоном
+
+Параметри:
+
+- `template` — XLSX-файл шаблону;
+- `payload` — JSON-рядок з `application_data`;
+- `outputFileName` — необов’язкова назва файла;
+- `returnJson` — `true`, якщо треба повернути JSON з `file_base64`.
+
+### n8n: HTTP Request для заявки
+
+- Method: `POST`
+- URL: `https://YOUR-SERVICE.up.railway.app/fill-application`
+- Header:
+  - `x-api-key: <API_TOKEN>`
+- Send Body: ON
+- Body Content Type: JSON
+
+Body:
+
+```json
+{
+  "filename": "{{ $json.filename }}",
+  "returnJson": true,
+  "application_data": {{ $json.application_data }}
+}
+```
+
+Після HTTP Request:
+
+- `Respond to Webhook`
+- `Respond With: JSON`
+- `Response Body: {{ $json }}`
+
+Адмінка вже підтримує `file_base64`.

@@ -1,3 +1,5 @@
+const fs = require("fs");
+const path = require("path");
 const express = require("express");
 const multer = require("multer");
 const ExcelJS = require("exceljs");
@@ -12,6 +14,14 @@ const upload = multer({
 
 const PORT = Number(process.env.PORT || 3000);
 const API_TOKEN = String(process.env.API_TOKEN || "").trim();
+const APPLICATION_TEMPLATE_PATH = path.join(
+  __dirname,
+  "templates",
+  "zayavka_perevezennia_template.xlsx"
+);
+
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 function clean(value) {
   return String(value ?? "")
@@ -819,6 +829,303 @@ function fillWorkbook(sheet, data) {
   fillCargoTable(sheet, data);
 }
 
+
+function truthy(value) {
+  const text = clean(value).toLowerCase();
+
+  return [
+    "1",
+    "true",
+    "yes",
+    "y",
+    "так",
+    "json"
+  ].includes(text);
+}
+
+function parseJsonField(value, fieldName) {
+  if (value === undefined || value === null || value === "") {
+    return {};
+  }
+
+  if (typeof value === "object") {
+    return value;
+  }
+
+  try {
+    return JSON.parse(String(value));
+  } catch (error) {
+    const message = fieldName
+      ? `Field '${fieldName}' is not valid JSON.`
+      : "Request body is not valid JSON.";
+
+    const customError = new Error(message);
+    customError.statusCode = 400;
+    throw customError;
+  }
+}
+
+function normalizeApplicationPayload(payload) {
+  const candidate =
+    payload.application_data ??
+    payload.applicationData ??
+    payload.data ??
+    payload.result ??
+    payload;
+
+  if (
+    candidate &&
+    typeof candidate === "object" &&
+    candidate.application_data &&
+    typeof candidate.application_data === "object"
+  ) {
+    return candidate.application_data;
+  }
+
+  return candidate && typeof candidate === "object"
+    ? candidate
+    : {};
+}
+
+function parseRequestPayload(req) {
+  if (req.body && req.body.payload !== undefined) {
+    return parseJsonField(req.body.payload, "payload");
+  }
+
+  return req.body && typeof req.body === "object"
+    ? req.body
+    : {};
+}
+
+function flattenObject(value, prefix = "", output = {}) {
+  if (
+    value === null ||
+    value === undefined ||
+    typeof value !== "object" ||
+    value instanceof Date ||
+    Buffer.isBuffer(value)
+  ) {
+    if (prefix) output[prefix] = value;
+    return output;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => {
+      flattenObject(item, prefix ? `${prefix}.${index}` : String(index), output);
+    });
+    return output;
+  }
+
+  for (const [key, item] of Object.entries(value)) {
+    flattenObject(item, prefix ? `${prefix}.${key}` : key, output);
+  }
+
+  return output;
+}
+
+function datePartsForApplication(value) {
+  const parsed = parseDate(value);
+
+  return {
+    day: parsed.day,
+    dayNoZero: parsed.day ? String(Number(parsed.day)) : "",
+    month: parsed.month,
+    monthName: monthNameUkrainian(parsed.month),
+    year: parsed.year,
+  };
+}
+
+function buildApplicationAliases(data) {
+  const aliases = {};
+  const appDate = firstValue(data, [
+    "application_date",
+    "date",
+    "loading_date",
+    "loading_datetime",
+  ]);
+  const appDateParts = datePartsForApplication(appDate);
+
+  aliases.application_day = appDateParts.dayNoZero || appDateParts.day;
+  aliases.application_month = appDateParts.month;
+  aliases.application_month_name = appDateParts.monthName;
+  aliases.application_year = appDateParts.year;
+
+  aliases.loading_date = firstValue(data, [
+    "loading_date",
+    "loading_datetime",
+    "application_date",
+  ]);
+  aliases.unloading_date = firstValue(data, [
+    "unloading_date",
+    "unloading_datetime",
+  ]);
+
+  aliases.route_from = firstValue(data, [
+    "route_from",
+    "loading_address",
+  ]);
+  aliases.route_to = firstValue(data, [
+    "route_to",
+    "unloading_address",
+  ]);
+
+  aliases.price = firstValue(data, [
+    "price",
+    "price_text",
+  ]);
+
+  const priceTextValue = clean(aliases.price);
+  if (/\bбез\s*пдв\b/iu.test(priceTextValue)) {
+    aliases.vat_mode = "без ПДВ";
+    aliases.price = priceTextValue.replace(/\s*грн\s*без\s*пдв\s*$/iu, "").trim();
+  } else if (/\bз\s*пдв\b/iu.test(priceTextValue)) {
+    aliases.vat_mode = "з ПДВ";
+    aliases.price = priceTextValue.replace(/\s*грн\s*з\s*пдв\s*$/iu, "").trim();
+  } else {
+    aliases.vat_mode = firstValue(data, ["vat_mode", "price_vat_mode"]);
+    aliases.price = priceTextValue.replace(/\s*грн\s*$/iu, "").trim();
+  }
+
+  aliases.carrier_full_name = firstValue(data, [
+    "carrier_full_name",
+    "carrier_name",
+  ]);
+  aliases.carrier_tax_id = firstValue(data, [
+    "carrier_tax_id",
+    "carrier_edrpou",
+    "carrier_ipn",
+  ]);
+  aliases.carrier_address = firstValue(data, ["carrier_address"]);
+  aliases.carrier_iban = firstValue(data, ["carrier_iban", "iban"]);
+  aliases.carrier_bank = firstValue(data, ["carrier_bank", "bank"]);
+  aliases.carrier_mfo = firstValue(data, ["carrier_mfo", "mfo"]);
+  aliases.carrier_signer = firstValue(data, [
+    "carrier_signer",
+    "carrier_director",
+  ]);
+
+  aliases.manager_phone = firstValue(data, ["manager_phone"]);
+  aliases.manager_name = firstValue(data, ["manager_name"]);
+  aliases.loading_time = firstValue(data, ["loading_time"]);
+
+  return aliases;
+}
+
+function placeholderValue(data, key, flattened, aliases) {
+  const direct = getByPath(data, key);
+
+  if (
+    direct !== undefined &&
+    direct !== null &&
+    clean(direct) !== ""
+  ) {
+    return direct;
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(aliases, key) &&
+    clean(aliases[key]) !== ""
+  ) {
+    return aliases[key];
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(flattened, key) &&
+    flattened[key] !== undefined &&
+    flattened[key] !== null
+  ) {
+    return flattened[key];
+  }
+
+  return "";
+}
+
+function replacePlaceholdersInString(text, data, flattened, aliases) {
+  return String(text).replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (match, rawKey) => {
+    const key = clean(rawKey);
+    const value = placeholderValue(data, key, flattened, aliases);
+    return value === undefined || value === null
+      ? ""
+      : String(value);
+  });
+}
+
+function fillApplicationWorkbook(workbook, data) {
+  const flattened = flattenObject(data);
+  const aliases = buildApplicationAliases(data);
+
+  for (const sheet of workbook.worksheets) {
+    const lowerName = clean(sheet.name).toLowerCase();
+
+    if (["мапінг", "mapping", "map", "технічний"].includes(lowerName)) {
+      sheet.state = "hidden";
+    }
+
+    sheet.eachRow({ includeEmpty: true }, (row) => {
+      row.eachCell({ includeEmpty: true }, (cell) => {
+        if (typeof cell.value === "string" && cell.value.includes("{{")) {
+          cell.value = replacePlaceholdersInString(
+            cell.value,
+            data,
+            flattened,
+            aliases
+          );
+          cell.alignment = {
+            ...(cell.alignment || {}),
+            wrapText: true,
+            vertical: cell.alignment?.vertical || "middle",
+          };
+          return;
+        }
+
+        if (
+          cell.value &&
+          typeof cell.value === "object" &&
+          Array.isArray(cell.value.richText)
+        ) {
+          const text = cell.value.richText.map((part) => part.text || "").join("");
+          if (text.includes("{{")) {
+            cell.value = replacePlaceholdersInString(
+              text,
+              data,
+              flattened,
+              aliases
+            );
+            cell.alignment = {
+              ...(cell.alignment || {}),
+              wrapText: true,
+              vertical: cell.alignment?.vertical || "middle",
+            };
+          }
+        }
+      });
+    });
+  }
+
+  workbook.calcProperties.fullCalcOnLoad = true;
+  workbook.calcProperties.forceFullCalc = true;
+}
+
+function applicationFileName(data, requestedFileName) {
+  if (clean(requestedFileName)) {
+    return safeFileName(requestedFileName);
+  }
+
+  const filename = firstValue(data, ["filename", "file_name"]);
+  if (clean(filename)) {
+    return safeFileName(filename);
+  }
+
+  const date = firstValue(data, [
+    "application_date",
+    "loading_date",
+    "loading_datetime",
+  ], "без_дати");
+  const route = firstValue(data, ["route_text"], "заявка");
+
+  return safeFileName(`Заявка_${date}_${route}.xlsx`);
+}
+
 function requireApiToken(req, res, next) {
   if (!API_TOKEN) {
     next();
@@ -845,7 +1152,7 @@ app.get("/health", (req, res) => {
   res.json({
     ok: true,
     service: "ttn-xlsx-service",
-    version: "5.0.0",
+    version: "5.1.0",
   });
 });
 
@@ -967,8 +1274,98 @@ app.post(
   }
 );
 
+
+app.post(
+  "/fill-application",
+  requireApiToken,
+  upload.single("template"),
+  async (req, res) => {
+    try {
+      let payload;
+
+      try {
+        payload = parseRequestPayload(req);
+      } catch (error) {
+        res.status(error.statusCode || 400).json({
+          ok: false,
+          error: error.message,
+        });
+        return;
+      }
+
+      const data = normalizeApplicationPayload(payload);
+
+      if (!data || typeof data !== "object") {
+        res.status(400).json({
+          ok: false,
+          error: "Missing application_data object.",
+        });
+        return;
+      }
+
+      const templateBuffer = req.file && req.file.buffer
+        ? req.file.buffer
+        : fs.readFileSync(APPLICATION_TEMPLATE_PATH);
+
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(templateBuffer);
+
+      fillApplicationWorkbook(workbook, data);
+
+      const generatedFileName = applicationFileName(
+        data,
+        clean(req.body?.outputFileName || payload.outputFileName)
+      );
+
+      const outputBuffer = await workbook.xlsx.writeBuffer();
+      const mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+      const shouldReturnJson =
+        truthy(req.body?.returnJson) ||
+        truthy(req.body?.return_json) ||
+        truthy(payload.returnJson) ||
+        truthy(payload.return_json) ||
+        truthy(req.query.returnJson) ||
+        truthy(req.query.return_json) ||
+        clean(req.query.format).toLowerCase() === "json";
+
+      if (shouldReturnJson) {
+        res.status(200).json({
+          ok: true,
+          filename: generatedFileName,
+          mime_type: mimeType,
+          file_base64: Buffer.from(outputBuffer).toString("base64"),
+        });
+        return;
+      }
+
+      res.setHeader("Content-Type", mimeType);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename*=UTF-8''${encodeURIComponent(generatedFileName)}`
+      );
+      res.setHeader(
+        "X-Generated-File-Name",
+        encodeURIComponent(generatedFileName)
+      );
+
+      res.status(200).send(Buffer.from(outputBuffer));
+    } catch (error) {
+      console.error(error);
+
+      res.status(500).json({
+        ok: false,
+        error:
+          error && error.message
+            ? error.message
+            : "Failed to fill application template.",
+      });
+    }
+  }
+);
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log(
-    `TTN XLSX service v5.0.0 is running on port ${PORT}`
+    `TTN XLSX service v5.1.0 is running on port ${PORT}`
   );
 });

@@ -1,0 +1,23 @@
+{
+  "filename": "Заявка_09.07.2026_Дніпро_Дніпро.xlsx",
+  "returnJson": true,
+  "application_data": {
+    "application_number": "09/07",
+    "application_date": "09.07.2026",
+    "city": "м. Київ",
+    "customer_name": "ТОВ ОВОПРАЙМ",
+    "carrier_name": "Фізична особа - підприємець Чабанюк Максим Володимирович",
+    "carrier_tax_id": "3330820731",
+    "truck_type": "фургон С",
+    "vehicles_count": "1",
+    "cargo_name": "Яйце куряче",
+    "temperature_mode": "",
+    "loading_datetime": "09.07.2026",
+    "route_from": "Дніпро",
+    "route_to": "Дніпро",
+    "route_text": "Дніпро-Дніпро",
+    "price_text": "2500,00 грн",
+    "payment_terms": "нал",
+    "vehicle_driver_text": "DAF АЕ5234ЕН Куркін Руслан Григорович ВХР 320767 +380636708798"
+  }
+}
