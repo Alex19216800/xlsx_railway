@@ -3,6 +3,8 @@ const path = require("path");
 const express = require("express");
 const multer = require("multer");
 const ExcelJS = require("exceljs");
+const PizZip = require("pizzip");
+const Docxtemplater = require("docxtemplater");
 
 const app = express();
 const upload = multer({
@@ -18,6 +20,11 @@ const APPLICATION_TEMPLATE_PATH = path.join(
   __dirname,
   "templates",
   "zayavka_perevezennia_template.xlsx"
+);
+const APPLICATION_DOCX_TEMPLATE_PATH = path.join(
+  __dirname,
+  "templates",
+  "zayavka_perevezennia_docx_template.docx"
 );
 
 app.use(express.json({ limit: "10mb" }));
@@ -1106,6 +1113,67 @@ function fillApplicationWorkbook(workbook, data) {
   workbook.calcProperties.forceFullCalc = true;
 }
 
+
+function applicationDocxFileName(data, requestedFileName) {
+  const baseName = applicationFileName(data, requestedFileName)
+    .replace(/\.xlsx$/iu, ".docx")
+    .replace(/\.xls$/iu, ".docx")
+    .replace(/\.doc$/iu, ".docx");
+
+  if (/\.docx$/iu.test(baseName)) {
+    return safeFileName(baseName);
+  }
+
+  return safeFileName(`${baseName}.docx`);
+}
+
+function applicationTemplateData(data) {
+  const flattened = flattenObject(data);
+  const aliases = buildApplicationAliases(data);
+
+  return {
+    ...flattened,
+    ...aliases,
+    ...data,
+  };
+}
+
+function docxErrorText(error) {
+  if (error && error.properties && Array.isArray(error.properties.errors)) {
+    return error.properties.errors
+      .map((item) => item && item.message ? item.message : String(item))
+      .filter(Boolean)
+      .join("; ");
+  }
+
+  return error && error.message
+    ? error.message
+    : "Failed to fill application DOCX template.";
+}
+
+function fillApplicationDocx(templateBuffer, data) {
+  const zip = new PizZip(templateBuffer);
+
+  const doc = new Docxtemplater(zip, {
+    paragraphLoop: true,
+    linebreaks: true,
+    delimiters: {
+      start: "{{",
+      end: "}}",
+    },
+    nullGetter() {
+      return "";
+    },
+  });
+
+  doc.render(applicationTemplateData(data));
+
+  return doc.getZip().generate({
+    type: "nodebuffer",
+    compression: "DEFLATE",
+  });
+}
+
 function applicationFileName(data, requestedFileName) {
   if (clean(requestedFileName)) {
     return safeFileName(requestedFileName);
@@ -1364,8 +1432,104 @@ app.post(
   }
 );
 
+
+app.post(
+  "/fill-application-docx",
+  requireApiToken,
+  upload.single("template"),
+  async (req, res) => {
+    try {
+      let payload;
+
+      try {
+        payload = parseRequestPayload(req);
+      } catch (error) {
+        res.status(error.statusCode || 400).json({
+          ok: false,
+          error: error.message,
+        });
+        return;
+      }
+
+      const data = normalizeApplicationPayload(payload);
+
+      if (!data || typeof data !== "object") {
+        res.status(400).json({
+          ok: false,
+          error: "Missing application_data object.",
+        });
+        return;
+      }
+
+      const templateBuffer = req.file && req.file.buffer
+        ? req.file.buffer
+        : fs.readFileSync(APPLICATION_DOCX_TEMPLATE_PATH);
+
+      let outputBuffer;
+
+      try {
+        outputBuffer = fillApplicationDocx(templateBuffer, data);
+      } catch (error) {
+        res.status(400).json({
+          ok: false,
+          error: docxErrorText(error),
+        });
+        return;
+      }
+
+      const generatedFileName = applicationDocxFileName(
+        data,
+        clean(req.body?.outputFileName || payload.outputFileName || payload.filename)
+      );
+
+      const mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+      const shouldReturnJson =
+        truthy(req.body?.returnJson) ||
+        truthy(req.body?.return_json) ||
+        truthy(payload.returnJson) ||
+        truthy(payload.return_json) ||
+        truthy(req.query.returnJson) ||
+        truthy(req.query.return_json) ||
+        clean(req.query.format).toLowerCase() === "json";
+
+      if (shouldReturnJson) {
+        res.status(200).json({
+          ok: true,
+          filename: generatedFileName,
+          mime_type: mimeType,
+          file_base64: Buffer.from(outputBuffer).toString("base64"),
+        });
+        return;
+      }
+
+      res.setHeader("Content-Type", mimeType);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename*=UTF-8''${encodeURIComponent(generatedFileName)}`
+      );
+      res.setHeader(
+        "X-Generated-File-Name",
+        encodeURIComponent(generatedFileName)
+      );
+
+      res.status(200).send(Buffer.from(outputBuffer));
+    } catch (error) {
+      console.error(error);
+
+      res.status(500).json({
+        ok: false,
+        error:
+          error && error.message
+            ? error.message
+            : "Failed to fill application DOCX template.",
+      });
+    }
+  }
+);
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log(
-    `TTN XLSX service v5.1.0 is running on port ${PORT}`
+    `TTN XLSX/DOCX service v5.2.0 is running on port ${PORT}`
   );
 });
