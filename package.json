@@ -1,8 +1,8 @@
 {
   "name": "ttn-xlsx-service",
-  "version": "5.2.0",
+  "version": "5.3.0",
   "private": true,
-  "description": "Railway TTN and application DOCX service v5.2",
+  "description": "Railway TTN and application service v5.3: cargo rows without green fill",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {

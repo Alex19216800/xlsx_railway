@@ -264,6 +264,230 @@ function cloneStyle(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+/*
+  Білий фон для товарних рядків.
+
+  У деяких XLSX-шаблонах зелена заливка зберігається не тільки
+  безпосередньо у cell.fill, а й у спільному стилі або в умовному
+  форматуванні. Тому фінально:
+  1) відокремлюємо стиль кожної комірки;
+  2) примусово задаємо білий фон;
+  3) видаляємо умовне форматування, яке перетинає товарні рядки.
+*/
+const CARGO_WHITE_FILL = {
+  type: "pattern",
+  pattern: "solid",
+  fgColor: {
+    argb: "FFFFFFFF",
+  },
+  bgColor: {
+    argb: "FFFFFFFF",
+  },
+};
+
+function forceWhiteCellBackground(cell) {
+  cell.style = cloneStyle(cell.style || {});
+  cell.fill = cloneStyle(CARGO_WHITE_FILL);
+}
+
+function columnLettersToNumber(value) {
+  const letters = clean(value).toUpperCase();
+
+  if (!/^[A-Z]+$/.test(letters)) {
+    return null;
+  }
+
+  let result = 0;
+
+  for (const letter of letters) {
+    result = result * 26 +
+      (letter.charCodeAt(0) - 64);
+  }
+
+  return result;
+}
+
+function parseSheetReferencePart(value) {
+  const part = clean(value)
+    .replace(/\$/g, "")
+    .split("!")
+    .pop();
+
+  if (!part) {
+    return null;
+  }
+
+  // Звичайний діапазон клітинок, наприклад A29:L33.
+  let match = part.match(
+    /^([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?$/i
+  );
+
+  if (match) {
+    const left = columnLettersToNumber(match[1]);
+    const top = Number(match[2]);
+    const right = columnLettersToNumber(
+      match[3] || match[1]
+    );
+    const bottom = Number(match[4] || match[2]);
+
+    if (
+      Number.isFinite(left) &&
+      Number.isFinite(top) &&
+      Number.isFinite(right) &&
+      Number.isFinite(bottom)
+    ) {
+      return {
+        left: Math.min(left, right),
+        right: Math.max(left, right),
+        top: Math.min(top, bottom),
+        bottom: Math.max(top, bottom),
+      };
+    }
+  }
+
+  // Цілі колонки, наприклад A:A або A:L.
+  match = part.match(/^([A-Z]+)(?::([A-Z]+))?$/i);
+
+  if (match) {
+    const left = columnLettersToNumber(match[1]);
+    const right = columnLettersToNumber(
+      match[2] || match[1]
+    );
+
+    if (
+      Number.isFinite(left) &&
+      Number.isFinite(right)
+    ) {
+      return {
+        left: Math.min(left, right),
+        right: Math.max(left, right),
+        top: 1,
+        bottom: 1048576,
+      };
+    }
+  }
+
+  // Цілі рядки, наприклад 29:33.
+  match = part.match(/^(\d+)(?::(\d+))?$/);
+
+  if (match) {
+    const top = Number(match[1]);
+    const bottom = Number(match[2] || match[1]);
+
+    if (
+      Number.isFinite(top) &&
+      Number.isFinite(bottom)
+    ) {
+      return {
+        left: 1,
+        right: 16384,
+        top: Math.min(top, bottom),
+        bottom: Math.max(top, bottom),
+      };
+    }
+  }
+
+  return null;
+}
+
+function rangesIntersect(first, second) {
+  return !(
+    first.right < second.left ||
+    first.left > second.right ||
+    first.bottom < second.top ||
+    first.top > second.bottom
+  );
+}
+
+function referenceIntersectsCargoRows(reference) {
+  const cargoRange = {
+    left: 1,
+    right: 12,
+    top: 29,
+    bottom: 33,
+  };
+
+  return String(reference ?? "")
+    .split(/[\s,]+/)
+    .map(parseSheetReferencePart)
+    .filter(Boolean)
+    .some(range => {
+      return rangesIntersect(range, cargoRange);
+    });
+}
+
+function removeCargoConditionalFormatting(sheet) {
+  if (
+    typeof sheet.removeConditionalFormatting ===
+    "function"
+  ) {
+    sheet.removeConditionalFormatting(cf => {
+      return !referenceIntersectsCargoRows(cf?.ref);
+    });
+    return;
+  }
+
+  if (Array.isArray(sheet.conditionalFormattings)) {
+    sheet.conditionalFormattings =
+      sheet.conditionalFormattings.filter(cf => {
+        return !referenceIntersectsCargoRows(cf?.ref);
+      });
+  }
+}
+
+function removeCargoRowBackgrounds(sheet) {
+  removeCargoConditionalFormatting(sheet);
+
+  for (let row = 29; row <= 33; row += 1) {
+    for (let column = 1; column <= 12; column += 1) {
+      forceWhiteCellBackground(
+        sheet.getCell(row, column)
+      );
+    }
+  }
+}
+
+function toNumericCellValue(value) {
+  if (
+    typeof value === "number" &&
+    Number.isFinite(value)
+  ) {
+    return value;
+  }
+
+  let text = clean(value)
+    .replace(/[₴грнuah]/giu, "")
+    .replace(/[\s  ]/g, "")
+    .trim();
+
+  if (!text) {
+    return "";
+  }
+
+  const commaIndex = text.lastIndexOf(",");
+  const dotIndex = text.lastIndexOf(".");
+
+  if (commaIndex >= 0 && dotIndex >= 0) {
+    if (commaIndex > dotIndex) {
+      text = text
+        .replace(/\./g, "")
+        .replace(",", ".");
+    } else {
+      text = text.replace(/,/g, "");
+    }
+  } else if (commaIndex >= 0) {
+    text = text.replace(",", ".");
+  }
+
+  text = text.replace(/[^0-9.+-]/g, "");
+
+  const number = Number(text);
+
+  return Number.isFinite(number)
+    ? number
+    : value;
+}
+
 function applyTransportationWarning(
   sheet,
   transportationType,
@@ -307,24 +531,11 @@ function applyTransportationWarning(
 }
 
 function clearCargoRows(sheet) {
-  const columns = [
-    "A", "B", "C", "D", "E", "F",
-    "G", "H", "I", "J", "K", "L"
-  ];
-
   for (let row = 29; row <= 33; row += 1) {
-    for (const column of columns) {
-      const cell = sheet.getCell(`${column}${row}`);
+    for (let column = 1; column <= 12; column += 1) {
+      const cell = sheet.getCell(row, column);
       cell.value = "";
-
-      /*
-        У сформованій ТТН товарні рядки мають бути без кольорової
-        заливки. Межі, шрифт і вирівнювання шаблону не змінюємо.
-      */
-      cell.fill = {
-        type: "pattern",
-        pattern: "none",
-      };
+      forceWhiteCellBackground(cell);
     }
   }
 
@@ -531,6 +742,13 @@ function fillCargoTable(sheet, data) {
       wrapText: false,
     }
   );
+
+  /*
+    Фінальний прохід після запису даних.
+    Гарантовано прибирає зелене оформлення з A29:L33,
+    включно зі спільними стилями та умовним форматуванням.
+  */
+  removeCargoRowBackgrounds(sheet);
 }
 
 function buildTransportWeightsText(data) {
@@ -842,11 +1060,13 @@ function fillWorkbook(sheet, data) {
   setCell(
     sheet,
     "K21",
-    firstValue(data, [
-      "cargo.vat_amount_calculated",
-      "vat_amount_calculated",
-      "cargo.vat_amount_text",
-    ]),
+    toNumericCellValue(
+      firstValue(data, [
+        "cargo.vat_amount_calculated",
+        "vat_amount_calculated",
+        "cargo.vat_amount_text",
+      ])
+    ),
     {
       horizontal: "right",
       shrinkToFit: true,
@@ -1249,7 +1469,7 @@ app.get("/health", (req, res) => {
   res.json({
     ok: true,
     service: "ttn-xlsx-service",
-    version: "5.1.0",
+    version: "5.3.0",
   });
 });
 
