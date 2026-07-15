@@ -56,6 +56,21 @@ function stripWordsMarker(value) {
 }
 
 function buildReceivedDriverText(data) {
+  /*
+    Насамперед використовуємо вже готове поле з n8n.
+    Воно має формат: ПІБ, ЄДДР.
+  */
+  const readyText = clean(
+    firstValue(data, [
+      "driver.received_driver_field",
+      "received_driver_field",
+    ])
+  );
+
+  if (readyText) {
+    return readyText;
+  }
+
   const fullName = clean(
     firstValue(data, [
       "driver.full_name",
@@ -75,17 +90,15 @@ function buildReceivedDriverText(data) {
   );
 
   /*
-    У полі «отримав водій/експедитор»:
+    Резервне формування:
     - ПІБ;
     - ЄДДР, якщо він є;
-    - без номера посвідчення водія.
+    - без номера посвідчення водія;
+    - частини розділяються комою і пробілом.
   */
-  return [
-    fullName,
-    eddr
-  ]
+  return [fullName, eddr]
     .filter(Boolean)
-    .join(" ");
+    .join(", ");
 }
 
 function getByPath(object, path) {
@@ -301,7 +314,17 @@ function clearCargoRows(sheet) {
 
   for (let row = 29; row <= 33; row += 1) {
     for (const column of columns) {
-      sheet.getCell(`${column}${row}`).value = "";
+      const cell = sheet.getCell(`${column}${row}`);
+      cell.value = "";
+
+      /*
+        У сформованій ТТН товарні рядки мають бути без кольорової
+        заливки. Межі, шрифт і вирівнювання шаблону не змінюємо.
+      */
+      cell.fill = {
+        type: "pattern",
+        pattern: "none",
+      };
     }
   }
 
