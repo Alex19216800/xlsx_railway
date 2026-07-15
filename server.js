@@ -833,13 +833,19 @@ function fillWorkbook(sheet, data) {
     )
   );
 
+  /*
+    K21 — окрема сума ПДВ.
+    Використовуємо тільки розраховане перевірене поле з
+    Build Correct TTN Data. OCR-текст і сума словами тут
+    більше не використовуються.
+  */
   setCell(
     sheet,
     "K21",
     firstValue(data, [
+      "cargo.vat_amount_calculated",
+      "vat_amount_calculated",
       "cargo.vat_amount_text",
-      "vat_amount_text",
-      "vat_amount_words",
     ]),
     {
       horizontal: "right",
