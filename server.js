@@ -707,13 +707,20 @@ function fillCargoTable(sheet, data) {
       ])
     );
 
+    /*
+      Маса брутто товарного рядка у payload зберігається в тоннах.
+      У XLSX записуємо звичайне число в кілограмах:
+      "18.900" -> 18900.
+    */
     setCell(
       sheet,
       `L${row}`,
-      valueFromItem(item, [
-        "gross_weight",
-        "weight",
-      ]),
+      grossWeightTonnesToKilograms(
+        valueFromItem(item, [
+          "gross_weight",
+          "weight",
+        ])
+      ),
       {
         horizontal: "right",
         wrapText: false,
@@ -1500,7 +1507,7 @@ app.get("/health", (req, res) => {
   res.json({
     ok: true,
     service: "ttn-xlsx-service",
-    version: "5.4.0",
+    version: "5.5.0",
   });
 });
 
