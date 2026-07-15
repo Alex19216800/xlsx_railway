@@ -488,6 +488,29 @@ function toNumericCellValue(value) {
     : value;
 }
 
+/*
+  Підсумкова маса брутто у payload зберігається в тоннах:
+  "18.900" означає 18.900 т.
+
+  У комірку L34 передаємо звичайне числове значення в кілограмах:
+  18.900 т -> 18900
+  7.500 т  -> 7500
+
+  Формат відображення застосовує сама комірка шаблону.
+*/
+function grossWeightTonnesToKilograms(value) {
+  const tonnes = toNumericCellValue(value);
+
+  if (
+    typeof tonnes !== "number" ||
+    !Number.isFinite(tonnes)
+  ) {
+    return "";
+  }
+
+  return Math.round(tonnes * 1000);
+}
+
 function applyTransportationWarning(
   sheet,
   transportationType,
@@ -729,14 +752,22 @@ function fillCargoTable(sheet, data) {
     }
   );
 
+  /*
+    L34 — загальна маса брутто.
+    У payload значення зберігається у тоннах, наприклад "18.900".
+    У XLSX записуємо число в кілограмах: 18900.
+    Форматування комірки виконує шаблон.
+  */
   setCell(
     sheet,
     "L34",
-    firstValue(data, [
-      "cargo.gross_weight",
-      "gross_weight",
-      "totals.gross_weight",
-    ]),
+    grossWeightTonnesToKilograms(
+      firstValue(data, [
+        "cargo.gross_weight",
+        "gross_weight",
+        "totals.gross_weight",
+      ])
+    ),
     {
       horizontal: "right",
       wrapText: false,
@@ -1469,7 +1500,7 @@ app.get("/health", (req, res) => {
   res.json({
     ok: true,
     service: "ttn-xlsx-service",
-    version: "5.3.0",
+    version: "5.4.0",
   });
 });
 
