@@ -264,6 +264,99 @@ function cloneStyle(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function applyCellAlignment(cell, options = {}) {
+  cell.alignment = {
+    ...(cell.alignment || {}),
+    wrapText: options.wrapText ?? true,
+    shrinkToFit: options.shrinkToFit ?? false,
+    vertical: options.vertical ?? "center",
+    horizontal:
+      options.horizontal ??
+      cell.alignment?.horizontal ??
+      "left",
+  };
+}
+
+/*
+  У merged-полях рядка 7 назву поля залишаємо без підкреслення,
+  а вставлене значення підкреслюємо.
+
+  Приклад:
+  Автомобіль MAN TGX...
+  де "Автомобіль" — без підкреслення,
+  "MAN TGX..." — з підкресленням.
+*/
+function setLabelWithUnderlinedValue(
+  sheet,
+  address,
+  label,
+  value,
+  options = {}
+) {
+  const cell = sheet.getCell(address);
+  const cleanedLabel = clean(label);
+  const cleanedValue = clean(value);
+  const baseFont = cloneStyle(cell.font || {});
+
+  const labelFont = {
+    ...baseFont,
+    underline: false,
+  };
+
+  const valueFont = {
+    ...baseFont,
+    underline: true,
+  };
+
+  cell.value = {
+    richText: cleanedValue
+      ? [
+          {
+            text: `${cleanedLabel} `,
+            font: labelFont,
+          },
+          {
+            text: cleanedValue,
+            font: valueFont,
+          },
+        ]
+      : [
+          {
+            text: cleanedLabel,
+            font: labelFont,
+          },
+        ],
+  };
+
+  applyCellAlignment(cell, options);
+}
+
+/*
+  Для окремих комірок габаритів у клітинці міститься тільки
+  вставлене значення, тому підкреслюємо весь текст/число.
+  Підписи "(довжина, м)", "(ширина, м)", "(висота, м)"
+  розташовані в інших комірках і не змінюються.
+*/
+function setUnderlinedCellValue(
+  sheet,
+  address,
+  value,
+  options = {}
+) {
+  const cell = sheet.getCell(address);
+
+  cell.value = value === undefined || value === null
+    ? ""
+    : value;
+
+  cell.font = {
+    ...cloneStyle(cell.font || {}),
+    underline: true,
+  };
+
+  applyCellAlignment(cell, options);
+}
+
 /*
   Білий фон для товарних рядків.
 
@@ -899,28 +992,25 @@ function fillWorkbook(sheet, data) {
       "transportation.is_valid"
     ) === true;
 
-  setCell(
+  setLabelWithUnderlinedValue(
     sheet,
     "A7",
+    "Автомобіль",
     automobile
-      ? `Автомобіль ${automobile}`
-      : "Автомобіль"
   );
 
-  setCell(
+  setLabelWithUnderlinedValue(
     sheet,
     "F7",
+    "Причіп/напівпричіп",
     trailer
-      ? `Причіп/напівпричіп ${trailer}`
-      : "Причіп/напівпричіп"
   );
 
-  setCell(
+  setLabelWithUnderlinedValue(
     sheet,
     "H7",
+    "Вид перевезень",
     transportationType
-      ? `Вид перевезень ${transportationType}`
-      : "Вид перевезень"
   );
 
   applyTransportationWarning(
@@ -1024,7 +1114,7 @@ function fillWorkbook(sheet, data) {
     buildReceivedDriverText(data)
   );
 
-  setCell(
+  setUnderlinedCellValue(
     sheet,
     "F19",
     stripDimensionUnit(
@@ -1039,7 +1129,7 @@ function fillWorkbook(sheet, data) {
     }
   );
 
-  setCell(
+  setUnderlinedCellValue(
     sheet,
     "G19",
     stripDimensionUnit(
@@ -1054,7 +1144,7 @@ function fillWorkbook(sheet, data) {
     }
   );
 
-  setCell(
+  setUnderlinedCellValue(
     sheet,
     "I19",
     stripDimensionUnit(
@@ -1508,7 +1598,7 @@ app.get("/health", (req, res) => {
   res.json({
     ok: true,
     service: "ttn-xlsx-service",
-    version: "5.6.0",
+    version: "5.7.0",
   });
 });
 
