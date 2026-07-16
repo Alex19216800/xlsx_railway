@@ -1,8 +1,8 @@
 {
   "name": "ttn-xlsx-service",
-  "version": "5.5.0",
+  "version": "5.6.0",
   "private": true,
-  "description": "Railway TTN and application service v5.4: total gross weight written as numeric kilograms",
+  "description": "Railway TTN and application service v5.6: all gross-weight cells are written as numeric tonnes",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {

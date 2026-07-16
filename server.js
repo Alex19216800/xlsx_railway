@@ -489,16 +489,17 @@ function toNumericCellValue(value) {
 }
 
 /*
-  Підсумкова маса брутто у payload зберігається в тоннах:
+  Усі значення маси брутто у payload зберігаються в тоннах:
   "18.900" означає 18.900 т.
 
-  У комірку L34 передаємо звичайне числове значення в кілограмах:
-  18.900 т -> 18900
-  7.500 т  -> 7500
+  У комірки XLSX також передаємо числове значення у тоннах:
+  18.900 т -> 18.9
+  7.500 т  -> 7.5
 
-  Формат відображення застосовує сама комірка шаблону.
+  Відображення трьох знаків після коми забезпечує формат комірки
+  у шаблоні, наприклад: 18,900.
 */
-function grossWeightTonnesToKilograms(value) {
+function grossWeightTonnesToCellValue(value) {
   const tonnes = toNumericCellValue(value);
 
   if (
@@ -508,7 +509,7 @@ function grossWeightTonnesToKilograms(value) {
     return "";
   }
 
-  return Math.round(tonnes * 1000);
+  return Number(tonnes.toFixed(3));
 }
 
 function applyTransportationWarning(
@@ -709,13 +710,13 @@ function fillCargoTable(sheet, data) {
 
     /*
       Маса брутто товарного рядка у payload зберігається в тоннах.
-      У XLSX записуємо звичайне число в кілограмах:
-      "18.900" -> 18900.
+      У XLSX також записуємо числове значення у тоннах:
+      "18.900" -> 18.9.
     */
     setCell(
       sheet,
       `L${row}`,
-      grossWeightTonnesToKilograms(
+      grossWeightTonnesToCellValue(
         valueFromItem(item, [
           "gross_weight",
           "weight",
@@ -762,13 +763,13 @@ function fillCargoTable(sheet, data) {
   /*
     L34 — загальна маса брутто.
     У payload значення зберігається у тоннах, наприклад "18.900".
-    У XLSX записуємо число в кілограмах: 18900.
+    У XLSX також записуємо число у тоннах: 18.9.
     Форматування комірки виконує шаблон.
   */
   setCell(
     sheet,
     "L34",
-    grossWeightTonnesToKilograms(
+    grossWeightTonnesToCellValue(
       firstValue(data, [
         "cargo.gross_weight",
         "gross_weight",
@@ -1507,7 +1508,7 @@ app.get("/health", (req, res) => {
   res.json({
     ok: true,
     service: "ttn-xlsx-service",
-    version: "5.5.0",
+    version: "5.6.0",
   });
 });
 
