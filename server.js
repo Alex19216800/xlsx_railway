@@ -1598,7 +1598,7 @@ app.get("/health", (req, res) => {
   res.json({
     ok: true,
     service: "ttn-xlsx-service",
-    version: "5.7.0",
+    version: "5.8.0",
   });
 });
 
@@ -1721,193 +1721,221 @@ app.post(
 );
 
 
+
+async function fillApplicationXlsxHandler(req, res) {
+  try {
+    let payload;
+
+    try {
+      payload = parseRequestPayload(req);
+    } catch (error) {
+      res.status(error.statusCode || 400).json({
+        ok: false,
+        error: error.message,
+      });
+      return;
+    }
+
+    const data = normalizeApplicationPayload(payload);
+
+    if (!data || typeof data !== "object") {
+      res.status(400).json({
+        ok: false,
+        error: "Missing application_data object.",
+      });
+      return;
+    }
+
+    const templateBuffer = req.file && req.file.buffer
+      ? req.file.buffer
+      : fs.readFileSync(APPLICATION_TEMPLATE_PATH);
+
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(templateBuffer);
+
+    fillApplicationWorkbook(workbook, data);
+
+    const generatedFileName = applicationFileName(
+      data,
+      clean(req.body?.outputFileName || payload.outputFileName)
+    );
+
+    const outputBuffer = await workbook.xlsx.writeBuffer();
+    const mimeType =
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+    const shouldReturnJson =
+      truthy(req.body?.returnJson) ||
+      truthy(req.body?.return_json) ||
+      truthy(payload.returnJson) ||
+      truthy(payload.return_json) ||
+      truthy(req.query.returnJson) ||
+      truthy(req.query.return_json) ||
+      clean(req.query.format).toLowerCase() === "json";
+
+    res.setHeader("Cache-Control", "no-store");
+
+    if (shouldReturnJson) {
+      res.status(200).json({
+        ok: true,
+        filename: generatedFileName,
+        mime_type: mimeType,
+        file_base64: Buffer.from(outputBuffer).toString("base64"),
+      });
+      return;
+    }
+
+    res.setHeader("Content-Type", mimeType);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename*=UTF-8''${encodeURIComponent(generatedFileName)}`
+    );
+    res.setHeader(
+      "X-Generated-File-Name",
+      encodeURIComponent(generatedFileName)
+    );
+
+    res.status(200).send(Buffer.from(outputBuffer));
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      ok: false,
+      error:
+        error && error.message
+          ? error.message
+          : "Failed to fill application XLSX template.",
+    });
+  }
+}
+
+async function fillApplicationDocxHandler(req, res) {
+  try {
+    let payload;
+
+    try {
+      payload = parseRequestPayload(req);
+    } catch (error) {
+      res.status(error.statusCode || 400).json({
+        ok: false,
+        error: error.message,
+      });
+      return;
+    }
+
+    const data = normalizeApplicationPayload(payload);
+
+    if (!data || typeof data !== "object") {
+      res.status(400).json({
+        ok: false,
+        error: "Missing application_data object.",
+      });
+      return;
+    }
+
+    const templateBuffer = req.file && req.file.buffer
+      ? req.file.buffer
+      : fs.readFileSync(APPLICATION_DOCX_TEMPLATE_PATH);
+
+    let outputBuffer;
+
+    try {
+      outputBuffer = fillApplicationDocx(templateBuffer, data);
+    } catch (error) {
+      res.status(400).json({
+        ok: false,
+        error: docxErrorText(error),
+      });
+      return;
+    }
+
+    const generatedFileName = applicationDocxFileName(
+      data,
+      clean(
+        req.body?.outputFileName ||
+        payload.outputFileName ||
+        payload.filename
+      )
+    );
+
+    const mimeType =
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+    const shouldReturnJson =
+      truthy(req.body?.returnJson) ||
+      truthy(req.body?.return_json) ||
+      truthy(payload.returnJson) ||
+      truthy(payload.return_json) ||
+      truthy(req.query.returnJson) ||
+      truthy(req.query.return_json) ||
+      clean(req.query.format).toLowerCase() === "json";
+
+    res.setHeader("Cache-Control", "no-store");
+
+    if (shouldReturnJson) {
+      res.status(200).json({
+        ok: true,
+        filename: generatedFileName,
+        mime_type: mimeType,
+        file_base64: Buffer.from(outputBuffer).toString("base64"),
+      });
+      return;
+    }
+
+    res.setHeader("Content-Type", mimeType);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename*=UTF-8''${encodeURIComponent(generatedFileName)}`
+    );
+    res.setHeader(
+      "X-Generated-File-Name",
+      encodeURIComponent(generatedFileName)
+    );
+
+    res.status(200).send(Buffer.from(outputBuffer));
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      ok: false,
+      error:
+        error && error.message
+          ? error.message
+          : "Failed to fill application DOCX template.",
+    });
+  }
+}
+
+/*
+  Канонічний endpoint заявки тепер завжди формує DOCX.
+
+  Раніше:
+  - /fill-application формував XLSX;
+  - /fill-application-docx формував DOCX.
+
+  Через це різні або закешовані версії адмінки могли отримувати різний формат.
+
+  Тепер:
+  - /fill-application       -> DOCX;
+  - /fill-application-docx  -> DOCX;
+  - /fill-application-xlsx  -> XLSX, лише для явного запиту Excel.
+*/
 app.post(
-  "/fill-application",
+  "/fill-application-xlsx",
   requireApiToken,
   upload.single("template"),
-  async (req, res) => {
-    try {
-      let payload;
-
-      try {
-        payload = parseRequestPayload(req);
-      } catch (error) {
-        res.status(error.statusCode || 400).json({
-          ok: false,
-          error: error.message,
-        });
-        return;
-      }
-
-      const data = normalizeApplicationPayload(payload);
-
-      if (!data || typeof data !== "object") {
-        res.status(400).json({
-          ok: false,
-          error: "Missing application_data object.",
-        });
-        return;
-      }
-
-      const templateBuffer = req.file && req.file.buffer
-        ? req.file.buffer
-        : fs.readFileSync(APPLICATION_TEMPLATE_PATH);
-
-      const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.load(templateBuffer);
-
-      fillApplicationWorkbook(workbook, data);
-
-      const generatedFileName = applicationFileName(
-        data,
-        clean(req.body?.outputFileName || payload.outputFileName)
-      );
-
-      const outputBuffer = await workbook.xlsx.writeBuffer();
-      const mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-
-      const shouldReturnJson =
-        truthy(req.body?.returnJson) ||
-        truthy(req.body?.return_json) ||
-        truthy(payload.returnJson) ||
-        truthy(payload.return_json) ||
-        truthy(req.query.returnJson) ||
-        truthy(req.query.return_json) ||
-        clean(req.query.format).toLowerCase() === "json";
-
-      if (shouldReturnJson) {
-        res.status(200).json({
-          ok: true,
-          filename: generatedFileName,
-          mime_type: mimeType,
-          file_base64: Buffer.from(outputBuffer).toString("base64"),
-        });
-        return;
-      }
-
-      res.setHeader("Content-Type", mimeType);
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename*=UTF-8''${encodeURIComponent(generatedFileName)}`
-      );
-      res.setHeader(
-        "X-Generated-File-Name",
-        encodeURIComponent(generatedFileName)
-      );
-
-      res.status(200).send(Buffer.from(outputBuffer));
-    } catch (error) {
-      console.error(error);
-
-      res.status(500).json({
-        ok: false,
-        error:
-          error && error.message
-            ? error.message
-            : "Failed to fill application template.",
-      });
-    }
-  }
+  fillApplicationXlsxHandler
 );
 
-
 app.post(
-  "/fill-application-docx",
+  ["/fill-application", "/fill-application-docx"],
   requireApiToken,
   upload.single("template"),
-  async (req, res) => {
-    try {
-      let payload;
-
-      try {
-        payload = parseRequestPayload(req);
-      } catch (error) {
-        res.status(error.statusCode || 400).json({
-          ok: false,
-          error: error.message,
-        });
-        return;
-      }
-
-      const data = normalizeApplicationPayload(payload);
-
-      if (!data || typeof data !== "object") {
-        res.status(400).json({
-          ok: false,
-          error: "Missing application_data object.",
-        });
-        return;
-      }
-
-      const templateBuffer = req.file && req.file.buffer
-        ? req.file.buffer
-        : fs.readFileSync(APPLICATION_DOCX_TEMPLATE_PATH);
-
-      let outputBuffer;
-
-      try {
-        outputBuffer = fillApplicationDocx(templateBuffer, data);
-      } catch (error) {
-        res.status(400).json({
-          ok: false,
-          error: docxErrorText(error),
-        });
-        return;
-      }
-
-      const generatedFileName = applicationDocxFileName(
-        data,
-        clean(req.body?.outputFileName || payload.outputFileName || payload.filename)
-      );
-
-      const mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-
-      const shouldReturnJson =
-        truthy(req.body?.returnJson) ||
-        truthy(req.body?.return_json) ||
-        truthy(payload.returnJson) ||
-        truthy(payload.return_json) ||
-        truthy(req.query.returnJson) ||
-        truthy(req.query.return_json) ||
-        clean(req.query.format).toLowerCase() === "json";
-
-      if (shouldReturnJson) {
-        res.status(200).json({
-          ok: true,
-          filename: generatedFileName,
-          mime_type: mimeType,
-          file_base64: Buffer.from(outputBuffer).toString("base64"),
-        });
-        return;
-      }
-
-      res.setHeader("Content-Type", mimeType);
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename*=UTF-8''${encodeURIComponent(generatedFileName)}`
-      );
-      res.setHeader(
-        "X-Generated-File-Name",
-        encodeURIComponent(generatedFileName)
-      );
-
-      res.status(200).send(Buffer.from(outputBuffer));
-    } catch (error) {
-      console.error(error);
-
-      res.status(500).json({
-        ok: false,
-        error:
-          error && error.message
-            ? error.message
-            : "Failed to fill application DOCX template.",
-      });
-    }
-  }
+  fillApplicationDocxHandler
 );
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(
-    `TTN XLSX/DOCX service v5.2.0 is running on port ${PORT}`
+    `TTN XLSX/DOCX service v5.8.0 is running on port ${PORT}`
   );
 });
