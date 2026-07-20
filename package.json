@@ -1,8 +1,8 @@
 {
   "name": "ttn-xlsx-service",
-  "version": "5.7.0",
+  "version": "5.9.1",
   "private": true,
-  "description": "Railway TTN service v5.7: underline inserted vehicle, transportation and dimension values only",
+  "description": "Railway TTN service v5.9.1: DOCX application rules for truck-only type and +2-day service, unloading and transport terms",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {

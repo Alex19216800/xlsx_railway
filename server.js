@@ -1320,6 +1320,208 @@ function datePartsForApplication(value) {
   };
 }
 
+function extractApplicationDateParts(value) {
+  const text = clean(value);
+
+  let match = text.match(
+    /(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})/
+  );
+
+  if (match) {
+    return {
+      day: match[1].padStart(2, "0"),
+      month: match[2].padStart(2, "0"),
+      year: match[3],
+    };
+  }
+
+  match = text.match(
+    /(\d{4})-(\d{1,2})-(\d{1,2})/
+  );
+
+  if (match) {
+    return {
+      day: match[3].padStart(2, "0"),
+      month: match[2].padStart(2, "0"),
+      year: match[1],
+    };
+  }
+
+  return {
+    day: "",
+    month: "",
+    year: "",
+  };
+}
+
+function formatApplicationDate(parts) {
+  if (!parts.day || !parts.month || !parts.year) {
+    return "";
+  }
+
+  return `${parts.day}.${parts.month}.${parts.year}`;
+}
+
+function addApplicationDays(value, days) {
+  const parts = extractApplicationDateParts(value);
+
+  if (!parts.day || !parts.month || !parts.year) {
+    return "";
+  }
+
+  const date = new Date(Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day)
+  ));
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  date.setUTCDate(date.getUTCDate() + Number(days || 0));
+
+  return [
+    String(date.getUTCDate()).padStart(2, "0"),
+    String(date.getUTCMonth() + 1).padStart(2, "0"),
+    String(date.getUTCFullYear()),
+  ].join(".");
+}
+
+function applicationTimeSuffix(value) {
+  const text = clean(value);
+  const match = text.match(/(?:^|\s)(?:з\s*)?(\d{1,2}:\d{2})(?:\s.*)?$/iu);
+
+  return match && match[1]
+    ? match[1]
+    : "";
+}
+
+function escapeRegExp(value) {
+  return String(value ?? "")
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeComparableText(value) {
+  return clean(value)
+    .toLowerCase()
+    .replace(/[’'`]/g, "")
+    .replace(/[–—−]/g, "-")
+    .replace(/[^a-zа-яіїєґ0-9]+/giu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function removeExactText(value, textToRemove) {
+  const source = clean(value);
+  const target = clean(textToRemove);
+
+  if (!source || !target) {
+    return source;
+  }
+
+  return source
+    .replace(new RegExp(escapeRegExp(target), "giu"), " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildApplicationTruckType(data) {
+  const rawTruckType = firstValue(data, [
+    "truck.vehicle_type_text",
+    "truck.vehicle_type",
+    "truck.type",
+    "vehicle.truck.vehicle_type_text",
+    "vehicle.truck.vehicle_type",
+    "vehicle.truck.type",
+    "truck_type",
+    "truck_vehicle_type",
+    "automobile_type",
+  ]);
+
+  const truckBodyType = firstValue(data, [
+    "truck.body_type",
+    "vehicle.truck.body_type",
+    "truck_body_type",
+    "truck_body",
+  ]);
+
+  let result = clean(rawTruckType);
+
+  const trailerValues = [
+    firstValue(data, [
+      "trailer.vehicle_type_text",
+      "trailer.vehicle_type",
+      "trailer.type",
+      "vehicle.trailer.vehicle_type_text",
+      "vehicle.trailer.vehicle_type",
+      "vehicle.trailer.type",
+      "trailer_type",
+      "trailer_vehicle_type",
+    ]),
+    firstValue(data, [
+      "trailer.body_type",
+      "vehicle.trailer.body_type",
+      "trailer_body_type",
+      "trailer_body",
+    ]),
+    firstValue(data, [
+      "trailer.brand_model",
+      "trailer.model",
+      "vehicle.trailer.brand_model",
+      "vehicle.trailer.model",
+      "trailer_model",
+    ]),
+    firstValue(data, [
+      "trailer.plate",
+      "vehicle.trailer.plate",
+      "trailer_plate",
+    ]),
+  ].filter(value => clean(value));
+
+  for (const trailerValue of trailerValues) {
+    result = removeExactText(result, trailerValue);
+  }
+
+  /*
+    Якщо вхідне поле було сформоване як:
+    "дані авто / дані причепа",
+    залишаємо тільки сегменти, які не описують причіп.
+  */
+  const segments = result
+    .split(/\s+(?:\/|\||\+|;)\s+|[\r\n]+/u)
+    .map(item => clean(item))
+    .filter(Boolean)
+    .filter(item => !/(?:^|\s)(?:причіп|напівпричіп|прицеп|полуприцеп|semi-?trailer|trailer)(?:\s|$)/iu.test(item));
+
+  if (segments.length > 0) {
+    result = segments.join(" ");
+  }
+
+  /*
+    Для рядків виду "Авто: ... Причіп: ..." відкидаємо все,
+    що починається з явної мітки причепа.
+  */
+  result = result
+    .replace(/\s+(?:причіп|напівпричіп|прицеп|полуприцеп|semi-?trailer|trailer)\s*[:\-–—]?\s*.*$/iu, "")
+    .replace(/\s*(?:\/|\||\+|;)\s*$/u, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (clean(truckBodyType)) {
+    const comparableResult = normalizeComparableText(result);
+    const comparableBody = normalizeComparableText(truckBodyType);
+
+    if (!comparableResult.includes(comparableBody)) {
+      result = [result, clean(truckBodyType)]
+        .filter(Boolean)
+        .join(" ");
+    }
+  }
+
+  return clean(result);
+}
+
 function buildApplicationAliases(data) {
   const aliases = {};
   const appDate = firstValue(data, [
@@ -1340,10 +1542,57 @@ function buildApplicationAliases(data) {
     "loading_datetime",
     "application_date",
   ]);
-  aliases.unloading_date = firstValue(data, [
-    "unloading_date",
-    "unloading_datetime",
+
+  const servicePeriodValue = firstValue(data, [
+    "service_period",
+    "transport_period",
+    "loading_date",
+    "loading_datetime",
+    "application_date",
   ]);
+
+  const serviceStartDate = formatApplicationDate(
+    extractApplicationDateParts(servicePeriodValue)
+  );
+  const serviceEndDate = addApplicationDays(
+    serviceStartDate,
+    2
+  );
+
+  const existingUnloadingDateTime = firstValue(data, [
+    "unloading_datetime",
+    "unloading_date",
+  ]);
+  const unloadingTime = applicationTimeSuffix(
+    existingUnloadingDateTime
+  );
+
+  aliases.service_period =
+    serviceStartDate && serviceEndDate
+      ? `${serviceStartDate} – ${serviceEndDate}`
+      : firstValue(data, ["service_period", "transport_period"]);
+
+  // У DOCX-шаблоні поле «СТРОК ПЕРЕВЕЗЕННЯ» використовує
+  // placeholder {{transport_period}}. Воно повинно формуватися
+  // за тією самою схемою: перша дата – перша дата + 2 дні.
+  aliases.transport_period = aliases.service_period;
+
+  aliases.unloading_date =
+    serviceEndDate ||
+    firstValue(data, [
+      "unloading_date",
+      "unloading_datetime",
+    ]);
+
+  aliases.unloading_datetime = serviceEndDate
+    ? [serviceEndDate, unloadingTime]
+        .filter(Boolean)
+        .join(" ")
+    : existingUnloadingDateTime;
+
+  aliases.truck_type =
+    buildApplicationTruckType(data) ||
+    firstValue(data, ["truck_type"]);
 
   aliases.route_from = firstValue(data, [
     "route_from",
@@ -1397,6 +1646,22 @@ function buildApplicationAliases(data) {
 }
 
 function placeholderValue(data, key, flattened, aliases) {
+  const forcedApplicationAliasKeys = new Set([
+    "truck_type",
+    "service_period",
+    "transport_period",
+    "unloading_date",
+    "unloading_datetime",
+  ]);
+
+  if (
+    forcedApplicationAliasKeys.has(key) &&
+    Object.prototype.hasOwnProperty.call(aliases, key) &&
+    clean(aliases[key]) !== ""
+  ) {
+    return aliases[key];
+  }
+
   const direct = getByPath(data, key);
 
   if (
@@ -1509,11 +1774,33 @@ function applicationTemplateData(data) {
   const flattened = flattenObject(data);
   const aliases = buildApplicationAliases(data);
 
-  return {
+  const output = {
     ...flattened,
     ...aliases,
     ...data,
   };
+
+  /*
+    Ці поля формуються сервером за правилами заявки
+    й повинні мати пріоритет над старими значеннями,
+    які могла надіслати закешована версія адмінки.
+  */
+  for (const key of [
+    "truck_type",
+    "service_period",
+    "transport_period",
+    "unloading_date",
+    "unloading_datetime",
+  ]) {
+    if (
+      Object.prototype.hasOwnProperty.call(aliases, key) &&
+      clean(aliases[key]) !== ""
+    ) {
+      output[key] = aliases[key];
+    }
+  }
+
+  return output;
 }
 
 function docxErrorText(error) {
@@ -1598,7 +1885,7 @@ app.get("/health", (req, res) => {
   res.json({
     ok: true,
     service: "ttn-xlsx-service",
-    version: "5.8.0",
+    version: "5.9.1",
   });
 });
 
@@ -1936,6 +2223,6 @@ app.post(
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(
-    `TTN XLSX/DOCX service v5.8.0 is running on port ${PORT}`
+    `TTN XLSX/DOCX service v5.9.1 is running on port ${PORT}`
   );
 });
