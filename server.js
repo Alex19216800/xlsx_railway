@@ -1427,55 +1427,69 @@ function removeExactText(value, textToRemove) {
 }
 
 function buildApplicationTruckType(data) {
-  const rawTruckType = firstValue(data, [
-    "truck.vehicle_type_text",
-    "truck.vehicle_type",
-    "truck.type",
-    "vehicle.truck.vehicle_type_text",
-    "vehicle.truck.vehicle_type",
-    "vehicle.truck.type",
-    "truck_type",
-    "truck_vehicle_type",
-    "automobile_type",
-  ]);
+  /*
+    Поле договору-заявки «ТИП АВТОМОБІЛЯ» повинно містити
+    тільки значення поля «Тип авто» з адмінки.
 
-  const truckBodyType = firstValue(data, [
-    "truck.body_type",
-    "vehicle.truck.body_type",
-    "truck_body_type",
-    "truck_body",
-  ]);
+    Не додаємо:
+    - тип кузова авто;
+    - тип причепа;
+    - кузов причепа;
+    - модель або номер причепа.
 
-  let result = clean(rawTruckType);
+    Плоске поле truck_type має найвищий пріоритет, тому що саме
+    його редагує користувач в адмінці.
+  */
+  let result = clean(
+    firstValue(data, [
+      "truck_type",
+      "truck.vehicle_type_text",
+      "truck.vehicle_type",
+      "truck.type",
+      "vehicle.truck.vehicle_type_text",
+      "vehicle.truck.vehicle_type",
+      "vehicle.truck.type",
+      "truck_vehicle_type",
+      "automobile_type",
+    ])
+  );
 
+  if (!result) {
+    return "";
+  }
+
+  /*
+    Захист для старих клієнтів, які могли передати в truck_type
+    комбінований рядок «тип авто / тип причепа».
+  */
   const trailerValues = [
     firstValue(data, [
+      "trailer_type",
       "trailer.vehicle_type_text",
       "trailer.vehicle_type",
       "trailer.type",
       "vehicle.trailer.vehicle_type_text",
       "vehicle.trailer.vehicle_type",
       "vehicle.trailer.type",
-      "trailer_type",
       "trailer_vehicle_type",
     ]),
     firstValue(data, [
+      "trailer_body_type",
       "trailer.body_type",
       "vehicle.trailer.body_type",
-      "trailer_body_type",
       "trailer_body",
     ]),
     firstValue(data, [
+      "trailer_model",
       "trailer.brand_model",
       "trailer.model",
       "vehicle.trailer.brand_model",
       "vehicle.trailer.model",
-      "trailer_model",
     ]),
     firstValue(data, [
+      "trailer_plate",
       "trailer.plate",
       "vehicle.trailer.plate",
-      "trailer_plate",
     ]),
   ].filter(value => clean(value));
 
@@ -1483,43 +1497,28 @@ function buildApplicationTruckType(data) {
     result = removeExactText(result, trailerValue);
   }
 
-  /*
-    Якщо вхідне поле було сформоване як:
-    "дані авто / дані причепа",
-    залишаємо тільки сегменти, які не описують причіп.
-  */
   const segments = result
-    .split(/\s+(?:\/|\||\+|;)\s+|[\r\n]+/u)
+    .split(/\s*(?:\/|\||\+|;)\s*|[\r\n]+/u)
     .map(item => clean(item))
     .filter(Boolean)
-    .filter(item => !/(?:^|\s)(?:причіп|напівпричіп|прицеп|полуприцеп|semi-?trailer|trailer)(?:\s|$)/iu.test(item));
+    .filter(item =>
+      !/(?:^|\s)(?:причіп|напівпричіп|прицеп|полуприцеп|semi-?trailer|trailer)(?:\s|$)/iu.test(item)
+    );
 
   if (segments.length > 0) {
-    result = segments.join(" ");
+    result = segments[0];
   }
 
-  /*
-    Для рядків виду "Авто: ... Причіп: ..." відкидаємо все,
-    що починається з явної мітки причепа.
-  */
   result = result
-    .replace(/\s+(?:причіп|напівпричіп|прицеп|полуприцеп|semi-?trailer|trailer)\s*[:\-–—]?\s*.*$/iu, "")
-    .replace(/\s*(?:\/|\||\+|;)\s*$/u, "")
+    .replace(
+      /\s+(?:причіп|напівпричіп|прицеп|полуприцеп|semi-?trailer|trailer)\s*[:\-–—]?\s*.*$/iu,
+      ""
+    )
+    .replace(/[\s,;:.\-–—/|+]+$/u, "")
     .replace(/\s+/g, " ")
     .trim();
 
-  if (clean(truckBodyType)) {
-    const comparableResult = normalizeComparableText(result);
-    const comparableBody = normalizeComparableText(truckBodyType);
-
-    if (!comparableResult.includes(comparableBody)) {
-      result = [result, clean(truckBodyType)]
-        .filter(Boolean)
-        .join(" ");
-    }
-  }
-
-  return clean(result);
+  return result;
 }
 
 function buildApplicationAliases(data) {
@@ -1885,7 +1884,7 @@ app.get("/health", (req, res) => {
   res.json({
     ok: true,
     service: "ttn-xlsx-service",
-    version: "5.9.1",
+    version: "5.9.2",
   });
 });
 
@@ -2223,6 +2222,6 @@ app.post(
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(
-    `TTN XLSX/DOCX service v5.9.1 is running on port ${PORT}`
+    `TTN XLSX/DOCX service v5.9.2 is running on port ${PORT}`
   );
 });

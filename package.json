@@ -1,8 +1,8 @@
 {
   "name": "ttn-xlsx-service",
-  "version": "5.9.1",
+  "version": "5.9.2",
   "private": true,
-  "description": "Railway TTN service v5.9.1: DOCX application rules for truck-only type and +2-day service, unloading and transport terms",
+  "description": "Railway TTN service v5.9.2: application truck type uses only admin truck_type; +2-day service, unloading and transport terms",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
