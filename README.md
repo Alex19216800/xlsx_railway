@@ -342,3 +342,16 @@ static labels and restores left alignment after all TTN values are written.
 The underline/bottom border of the adjacent value fields is preserved.
 `/health` returns `"version": "5.9.4"`.
 
+## Version 5.9.5
+
+TTN XLSX formatting corrections:
+
+- `F19`, `G19`, `I19` now use an explicit thin bottom border for
+  length, width, and height values;
+- the dimension fields no longer rely on font underline;
+- `J21` («у тому числі ПДВ») is explicitly normalized without
+  font underline or a bottom border;
+- the value field `K21:L21` keeps its bottom border.
+
+`/health` returns `"version": "5.9.5"`.
+

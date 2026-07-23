@@ -1,8 +1,8 @@
 {
   "name": "ttn-xlsx-service",
-  "version": "5.9.4",
+  "version": "5.9.5",
   "private": true,
-  "description": "Railway TTN service v5.9.4: normalize static TTN labels without underline/bottom border; preserve prior DOCX and TTN rules",
+  "description": "Railway TTN service v5.9.5: stable bottom lines for dimension fields and no underline on the static VAT label",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {

@@ -332,8 +332,13 @@ function setLabelWithUnderlinedValue(
 }
 
 /*
-  Для окремих комірок габаритів у клітинці міститься тільки
-  вставлене значення, тому підкреслюємо весь текст/число.
+  Поля габаритів повинні мати довгу нижню лінію на всю
+  ширину комірки, як у початковому шаблоні.
+
+  Не використовуємо font underline, оскільки він підкреслює
+  лише саме число і в Excel може відображатися нестабільно,
+  зокрема для комірки ширини G19.
+
   Підписи "(довжина, м)", "(ширина, м)", "(висота, м)"
   розташовані в інших комірках і не змінюються.
 */
@@ -349,9 +354,22 @@ function setUnderlinedCellValue(
     ? ""
     : value;
 
-  cell.font = {
-    ...cloneStyle(cell.font || {}),
-    underline: true,
+  const font = cloneStyle(
+    cell.font || {}
+  );
+
+  delete font.underline;
+
+  cell.font = font;
+
+  cell.border = {
+    ...cloneStyle(cell.border || {}),
+    bottom: {
+      style: "thin",
+      color: {
+        argb: "FF000000",
+      },
+    },
   };
 
   applyCellAlignment(cell, options);
@@ -417,6 +435,13 @@ function normalizeStaticTtnLabels(sheet) {
     "A21",
     "B21",
     "C21",
+
+    /*
+      Статичний підпис «у тому числі ПДВ» не повинен
+      бути підкреслений. Лінія залишається тільки під
+      полем значення K21:L21.
+    */
+    "J21",
 
     "A23",
     "B23",
@@ -1889,7 +1914,7 @@ app.get("/health", (req, res) => {
   res.json({
     ok: true,
     service: "ttn-xlsx-service",
-    version: "5.9.4",
+    version: "5.9.5",
   });
 });
 
@@ -2227,6 +2252,6 @@ app.post(
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(
-    `TTN XLSX/DOCX service v5.9.4 is running on port ${PORT}`
+    `TTN XLSX/DOCX service v5.9.5 is running on port ${PORT}`
   );
 });
