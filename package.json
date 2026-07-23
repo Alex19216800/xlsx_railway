@@ -1,8 +1,8 @@
 {
   "name": "ttn-xlsx-service",
-  "version": "5.9.6",
+  "version": "5.9.7",
   "private": true,
-  "description": "Railway TTN service v5.9.6: restore visible underline for length, width and height fields while preserving VAT label fix",
+  "description": "Railway TTN service v5.9.7: dimension values use font underline without bottom cell borders",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {

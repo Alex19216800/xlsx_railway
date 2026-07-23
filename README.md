@@ -371,3 +371,14 @@ the static label is not underlined, while `K21:L21` keeps the value line.
 
 `/health` returns `"version": "5.9.6"`.
 
+## Version 5.9.7
+
+Dimension field correction:
+
+- `F19`, `G19`, and `I19` keep font underline for the numeric values;
+- the thin bottom cell border is removed from all three cells;
+- no long line is drawn across the full cell width;
+- the `J21` VAT-label correction from v5.9.5 remains unchanged.
+
+`/health` returns `"version": "5.9.7"`.
+
