@@ -332,15 +332,21 @@ function setLabelWithUnderlinedValue(
 }
 
 /*
-  Поля габаритів повинні мати довгу нижню лінію на всю
-  ширину комірки, як у початковому шаблоні.
+  Поля габаритів F19, G19 та I19 повинні бути
+  підкреслені незалежно від того, як конкретна версія
+  Excel відображає межі комірок.
 
-  Не використовуємо font underline, оскільки він підкреслює
-  лише саме число і в Excel може відображатися нестабільно,
-  зокрема для комірки ширини G19.
+  Тому одночасно використовуємо:
+  1) underline для самого числового значення;
+  2) thin bottom border на всю ширину комірки.
+
+  Це повертає підкреслення для:
+  - довжини;
+  - ширини;
+  - висоти.
 
   Підписи "(довжина, м)", "(ширина, м)", "(висота, м)"
-  розташовані в інших комірках і не змінюються.
+  розташовані в рядку нижче і не змінюються.
 */
 function setUnderlinedCellValue(
   sheet,
@@ -354,13 +360,10 @@ function setUnderlinedCellValue(
     ? ""
     : value;
 
-  const font = cloneStyle(
-    cell.font || {}
-  );
-
-  delete font.underline;
-
-  cell.font = font;
+  cell.font = {
+    ...cloneStyle(cell.font || {}),
+    underline: true,
+  };
 
   cell.border = {
     ...cloneStyle(cell.border || {}),
@@ -1914,7 +1917,7 @@ app.get("/health", (req, res) => {
   res.json({
     ok: true,
     service: "ttn-xlsx-service",
-    version: "5.9.5",
+    version: "5.9.6",
   });
 });
 
@@ -2252,6 +2255,6 @@ app.post(
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(
-    `TTN XLSX/DOCX service v5.9.5 is running on port ${PORT}`
+    `TTN XLSX/DOCX service v5.9.6 is running on port ${PORT}`
   );
 });

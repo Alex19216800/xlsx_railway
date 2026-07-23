@@ -355,3 +355,19 @@ TTN XLSX formatting corrections:
 
 `/health` returns `"version": "5.9.5"`.
 
+## Version 5.9.6
+
+Dimension underline correction:
+
+- `F19` — length;
+- `G19` — width;
+- `I19` — height.
+
+Each field now receives both font underline and a thin bottom border.
+This keeps the underline visible across Excel renderers.
+
+The v5.9.5 correction for `J21` («у тому числі ПДВ») remains:
+the static label is not underlined, while `K21:L21` keeps the value line.
+
+`/health` returns `"version": "5.9.6"`.
+
