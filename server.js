@@ -358,6 +358,79 @@ function setUnderlinedCellValue(
 }
 
 /*
+  Статичні підписи форми не повинні успадковувати
+  підкреслення, нижню межу або центрування від комірок,
+  у які Railway вставляє значення.
+
+  Це окремо нормалізує:
+  - A5  — Місце складання;
+  - A11 — Вантажовідправник;
+  - A13 — Вантажоодержувач;
+  - A21 — Усього відпущено на загальну суму;
+  - A23 — Супровідні документи на вантаж.
+
+  Порожні комірки між підписом і полем значення також
+  очищаються від нижньої межі, щоб лінія не заходила
+  під текст підпису.
+*/
+function normalizeStaticLabelCell(
+  sheet,
+  address,
+  options = {}
+) {
+  const cell = sheet.getCell(address);
+
+  const font = cloneStyle(
+    cell.font || {}
+  );
+
+  delete font.underline;
+
+  cell.font = font;
+
+  const border = cloneStyle(
+    cell.border || {}
+  );
+
+  delete border.bottom;
+
+  cell.border = border;
+
+  cell.alignment = {
+    ...(cell.alignment || {}),
+    horizontal:
+      options.horizontal || "left",
+    vertical: "center",
+    wrapText: false,
+    shrinkToFit: false,
+  };
+}
+
+function normalizeStaticTtnLabels(sheet) {
+  [
+    "A5",
+    "B5",
+
+    "A11",
+    "A13",
+
+    "A21",
+    "B21",
+    "C21",
+
+    "A23",
+    "B23",
+    "C23",
+  ].forEach(
+    address =>
+      normalizeStaticLabelCell(
+        sheet,
+        address
+      )
+  );
+}
+
+/*
   Білий фон для товарних рядків.
 
   У деяких XLSX-шаблонах зелена заливка зберігається не тільки
@@ -1212,6 +1285,13 @@ function fillWorkbook(sheet, data) {
   );
 
   fillCargoTable(sheet, data);
+
+  /*
+    Виконуємо після всіх записів у XLSX, щоб ExcelJS
+    не залишив на статичних підписах спільні стилі
+    від сусідніх полів значень.
+  */
+  normalizeStaticTtnLabels(sheet);
 }
 
 
@@ -1428,97 +1508,23 @@ function removeExactText(value, textToRemove) {
 
 function buildApplicationTruckType(data) {
   /*
-    Поле договору-заявки «ТИП АВТОМОБІЛЯ» повинно містити
-    тільки значення поля «Тип авто» з адмінки.
+    Поле «ТИП АВТОМОБІЛЯ» бере тільки truck_type.
 
-    Не додаємо:
-    - тип кузова авто;
-    - тип причепа;
-    - кузов причепа;
-    - модель або номер причепа.
-
-    Плоске поле truck_type має найвищий пріоритет, тому що саме
-    його редагує користувач в адмінці.
+    Не використовуємо trailer_type як fallback.
+    Не приєднуємо truck_body_type.
+    Не виконуємо розділення за символом "/",
+    оскільки в типі причепа зустрічається скорочення «н/пр».
+    Саме старе розділення «н/пр» створювало фрагмент
+    «пр тентований».
   */
-  let result = clean(
+  return clean(
     firstValue(data, [
       "truck_type",
-      "truck.vehicle_type_text",
-      "truck.vehicle_type",
-      "truck.type",
-      "vehicle.truck.vehicle_type_text",
-      "vehicle.truck.vehicle_type",
-      "vehicle.truck.type",
-      "truck_vehicle_type",
-      "automobile_type",
+      "trip.truck_type",
+      "truck.truck_type",
+      "vehicle.truck.truck_type"
     ])
   );
-
-  if (!result) {
-    return "";
-  }
-
-  /*
-    Захист для старих клієнтів, які могли передати в truck_type
-    комбінований рядок «тип авто / тип причепа».
-  */
-  const trailerValues = [
-    firstValue(data, [
-      "trailer_type",
-      "trailer.vehicle_type_text",
-      "trailer.vehicle_type",
-      "trailer.type",
-      "vehicle.trailer.vehicle_type_text",
-      "vehicle.trailer.vehicle_type",
-      "vehicle.trailer.type",
-      "trailer_vehicle_type",
-    ]),
-    firstValue(data, [
-      "trailer_body_type",
-      "trailer.body_type",
-      "vehicle.trailer.body_type",
-      "trailer_body",
-    ]),
-    firstValue(data, [
-      "trailer_model",
-      "trailer.brand_model",
-      "trailer.model",
-      "vehicle.trailer.brand_model",
-      "vehicle.trailer.model",
-    ]),
-    firstValue(data, [
-      "trailer_plate",
-      "trailer.plate",
-      "vehicle.trailer.plate",
-    ]),
-  ].filter(value => clean(value));
-
-  for (const trailerValue of trailerValues) {
-    result = removeExactText(result, trailerValue);
-  }
-
-  const segments = result
-    .split(/\s*(?:\/|\||\+|;)\s*|[\r\n]+/u)
-    .map(item => clean(item))
-    .filter(Boolean)
-    .filter(item =>
-      !/(?:^|\s)(?:причіп|напівпричіп|прицеп|полуприцеп|semi-?trailer|trailer)(?:\s|$)/iu.test(item)
-    );
-
-  if (segments.length > 0) {
-    result = segments[0];
-  }
-
-  result = result
-    .replace(
-      /\s+(?:причіп|напівпричіп|прицеп|полуприцеп|semi-?trailer|trailer)\s*[:\-–—]?\s*.*$/iu,
-      ""
-    )
-    .replace(/[\s,;:.\-–—/|+]+$/u, "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  return result;
 }
 
 function buildApplicationAliases(data) {
@@ -1590,8 +1596,7 @@ function buildApplicationAliases(data) {
     : existingUnloadingDateTime;
 
   aliases.truck_type =
-    buildApplicationTruckType(data) ||
-    firstValue(data, ["truck_type"]);
+    buildApplicationTruckType(data);
 
   aliases.route_from = firstValue(data, [
     "route_from",
@@ -1884,7 +1889,7 @@ app.get("/health", (req, res) => {
   res.json({
     ok: true,
     service: "ttn-xlsx-service",
-    version: "5.9.2",
+    version: "5.9.4",
   });
 });
 
@@ -2222,6 +2227,6 @@ app.post(
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(
-    `TTN XLSX/DOCX service v5.9.2 is running on port ${PORT}`
+    `TTN XLSX/DOCX service v5.9.4 is running on port ${PORT}`
   );
 });

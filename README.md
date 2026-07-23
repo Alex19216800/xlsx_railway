@@ -316,3 +316,29 @@ Application truck type correction:
 - old combined strings are cleaned as a compatibility fallback;
 - `/health` returns `"version": "5.9.2"`.
 
+## Version 5.9.3
+
+Root correction for application field `{{truck_type}}`:
+
+- uses only `truck_type`;
+- never falls back to `trailer_type`;
+- never appends `truck_body_type`;
+- never splits values by `/`;
+- abbreviation `н/пр` can no longer produce the fragment `пр тентований`;
+- `/health` returns `"version": "5.9.3"`.
+
+## Version 5.9.4
+
+TTN static-label style correction:
+
+- `A5` — «Місце складання»;
+- `A11` — «Вантажовідправник»;
+- `A13` — «Вантажоодержувач»;
+- `A21` — «Усього відпущено на загальну суму»;
+- `A23` — «Супровідні документи на вантаж».
+
+Railway now explicitly removes font underline and bottom border from these
+static labels and restores left alignment after all TTN values are written.
+The underline/bottom border of the adjacent value fields is preserved.
+`/health` returns `"version": "5.9.4"`.
+
