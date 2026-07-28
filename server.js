@@ -254,6 +254,10 @@ function setCell(sheet, address, value, options = {}) {
       cell.alignment?.horizontal ??
       "left",
   };
+
+  if (options.numFmt) {
+    cell.numFmt = options.numFmt;
+  }
 }
 
 function cloneStyle(value) {
@@ -332,16 +336,10 @@ function setLabelWithUnderlinedValue(
 }
 
 /*
-  Поля габаритів F19, G19 та I19 підкреслюємо
-  тільки як текстові значення.
-
-  Нижню межу комірки не додаємо, щоб під числом
-  не з'являлася довга лінія на всю ширину комірки.
-
-  Поля:
-  - F19 — довжина;
-  - G19 — ширина;
-  - I19 — висота.
+  Для окремих комірок габаритів у клітинці міститься тільки
+  вставлене значення, тому підкреслюємо весь текст/число.
+  Підписи "(довжина, м)", "(ширина, м)", "(висота, м)"
+  розташовані в інших комірках і не змінюються.
 */
 function setUnderlinedCellValue(
   sheet,
@@ -360,99 +358,7 @@ function setUnderlinedCellValue(
     underline: true,
   };
 
-  const border = cloneStyle(
-    cell.border || {}
-  );
-
-  /*
-    Видаляємо лише нижню межу. Інші межі комірки,
-    якщо вони є у шаблоні, залишаємо без змін.
-  */
-  delete border.bottom;
-
-  cell.border = border;
-
   applyCellAlignment(cell, options);
-}
-
-/*
-  Статичні підписи форми не повинні успадковувати
-  підкреслення, нижню межу або центрування від комірок,
-  у які Railway вставляє значення.
-
-  Це окремо нормалізує:
-  - A5  — Місце складання;
-  - A11 — Вантажовідправник;
-  - A13 — Вантажоодержувач;
-  - A21 — Усього відпущено на загальну суму;
-  - A23 — Супровідні документи на вантаж.
-
-  Порожні комірки між підписом і полем значення також
-  очищаються від нижньої межі, щоб лінія не заходила
-  під текст підпису.
-*/
-function normalizeStaticLabelCell(
-  sheet,
-  address,
-  options = {}
-) {
-  const cell = sheet.getCell(address);
-
-  const font = cloneStyle(
-    cell.font || {}
-  );
-
-  delete font.underline;
-
-  cell.font = font;
-
-  const border = cloneStyle(
-    cell.border || {}
-  );
-
-  delete border.bottom;
-
-  cell.border = border;
-
-  cell.alignment = {
-    ...(cell.alignment || {}),
-    horizontal:
-      options.horizontal || "left",
-    vertical: "center",
-    wrapText: false,
-    shrinkToFit: false,
-  };
-}
-
-function normalizeStaticTtnLabels(sheet) {
-  [
-    "A5",
-    "B5",
-
-    "A11",
-    "A13",
-
-    "A21",
-    "B21",
-    "C21",
-
-    /*
-      Статичний підпис «у тому числі ПДВ» не повинен
-      бути підкреслений. Лінія залишається тільки під
-      полем значення K21:L21.
-    */
-    "J21",
-
-    "A23",
-    "B23",
-    "C23",
-  ].forEach(
-    address =>
-      normalizeStaticLabelCell(
-        sheet,
-        address
-      )
-  );
 }
 
 /*
@@ -1011,7 +917,7 @@ function buildTransportWeightsText(data) {
   return values.filter(Boolean).join(", ");
 }
 
-function fillWorkbook(sheet, data) {
+function fillOldWorkbook(sheet, data) {
   const documentNumber = clean(
     firstValue(data, [
       "document.number",
@@ -1310,13 +1216,668 @@ function fillWorkbook(sheet, data) {
   );
 
   fillCargoTable(sheet, data);
+}
+
+
+/* =========================================================
+   НОВА ФОРМА ТТН (З 27.07.2026)
+========================================================= */
+
+function calculateVatFromTotalWithVat(value) {
+  const total = toNumericCellValue(value);
+
+  if (
+    typeof total !== "number" ||
+    !Number.isFinite(total)
+  ) {
+    return "";
+  }
+
+  return Number(
+    (total * 20 / 120).toFixed(2)
+  );
+}
+
+function clearNewCargoRows(sheet) {
+  for (let row = 35; row <= 38; row += 1) {
+    for (let column = 1; column <= 26; column += 1) {
+      sheet.getCell(row, column).value = "";
+    }
+  }
+
+  for (const address of ["O39", "U39", "Z39"]) {
+    sheet.getCell(address).value = "";
+  }
+}
+
+function fillNewCargoTable(sheet, data) {
+  clearNewCargoRows(sheet);
+
+  const allItems = cargoItemsFrom(data);
+
+  if (allItems.length > 4) {
+    throw new Error(
+      `New TTN template supports a maximum of 4 cargo items, received ${allItems.length}.`
+    );
+  }
+
+  allItems.forEach((item, index) => {
+    const row = 35 + index;
+
+    setCell(sheet, `A${row}`, index + 1, {
+      horizontal: "center",
+      wrapText: false,
+    });
+
+    setCell(
+      sheet,
+      `B${row}`,
+      valueFromItem(item, [
+        "name",
+        "cargo_name",
+        "title",
+      ])
+    );
+
+    setCell(
+      sheet,
+      `F${row}`,
+      valueFromItem(item, [
+        "animal_id",
+        "animal_identification_number",
+      ])
+    );
+
+    setCell(
+      sheet,
+      `I${row}`,
+      valueFromItem(item, [
+        "animal_type",
+        "type_of_animal",
+      ])
+    );
+
+    setCell(
+      sheet,
+      `K${row}`,
+      valueFromItem(item, [
+        "temperature",
+        "temperature_mode",
+        "temperature_regime",
+      ])
+    );
+
+    setCell(
+      sheet,
+      `N${row}`,
+      valueFromItem(item, [
+        "unit",
+        "unit_of_measurement",
+      ]),
+      {
+        horizontal: "center",
+        wrapText: false,
+      }
+    );
+
+    setCell(
+      sheet,
+      `O${row}`,
+      toNumericCellValue(
+        valueFromItem(item, [
+          "quantity_places",
+          "places_count",
+          "quantity",
+          "places",
+        ])
+      ),
+      {
+        horizontal: "center",
+        wrapText: false,
+        numFmt: "0",
+      }
+    );
+
+    setCell(
+      sheet,
+      `R${row}`,
+      toNumericCellValue(
+        valueFromItem(item, [
+          "price_without_vat",
+          "price",
+          "unit_price",
+        ])
+      ),
+      {
+        horizontal: "right",
+        wrapText: false,
+        numFmt: "0.000",
+      }
+    );
+
+    setCell(
+      sheet,
+      `U${row}`,
+      toNumericCellValue(
+        valueFromItem(item, [
+          "total_with_vat",
+          "total_sum_with_vat",
+          "sum",
+        ])
+      ),
+      {
+        horizontal: "right",
+        wrapText: false,
+        numFmt: "#,##0.00",
+      }
+    );
+
+    setCell(
+      sheet,
+      `W${row}`,
+      valueFromItem(item, [
+        "package_type",
+        "packaging",
+      ]),
+      {
+        horizontal: "center",
+        wrapText: false,
+      }
+    );
+
+    setCell(
+      sheet,
+      `X${row}`,
+      valueFromItem(item, [
+        "cargo_document",
+        "document",
+      ])
+    );
+
+    setCell(
+      sheet,
+      `Z${row}`,
+      grossWeightTonnesToCellValue(
+        valueFromItem(item, [
+          "gross_weight",
+          "weight",
+        ])
+      ),
+      {
+        horizontal: "right",
+        wrapText: false,
+        numFmt: "0.000",
+      }
+    );
+  });
+
+  setCell(
+    sheet,
+    "O39",
+    toNumericCellValue(
+      firstValue(data, [
+        "cargo.total_places",
+        "places_count",
+        "cargo_total_places",
+        "totals.places_count",
+      ])
+    ),
+    {
+      horizontal: "center",
+      wrapText: false,
+      numFmt: "0",
+    }
+  );
+
+  setCell(
+    sheet,
+    "U39",
+    toNumericCellValue(
+      firstValue(data, [
+        "cargo.total_sum_with_vat",
+        "total_sum_with_vat",
+        "totals.total_sum_with_vat",
+        "cargo.vat_amount",
+        "vat_amount",
+      ])
+    ),
+    {
+      horizontal: "right",
+      wrapText: false,
+      numFmt: "#,##0.00",
+    }
+  );
+
+  setCell(
+    sheet,
+    "Z39",
+    grossWeightTonnesToCellValue(
+      firstValue(data, [
+        "cargo.gross_weight",
+        "gross_weight",
+        "totals.gross_weight",
+      ])
+    ),
+    {
+      horizontal: "right",
+      wrapText: false,
+      numFmt: "0.000",
+    }
+  );
+}
+
+function applyNewTransportationWarning(
+  sheet,
+  isValid
+) {
+  if (isValid) {
+    return;
+  }
+
+  const cell = sheet.getCell("X11");
+  cell.style = cloneStyle(cell.style || {});
+  cell.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: {
+      argb: "FFFFC7CE",
+    },
+  };
+}
+
+function fillNewWorkbook(sheet, data) {
+  const documentNumber = clean(
+    firstValue(data, [
+      "document.number",
+      "document_number",
+      "ttn_number",
+      "number",
+    ])
+  );
+
+  const documentDate = clean(
+    firstValue(data, [
+      "document.date",
+      "document_date",
+      "ttn_date",
+      "date",
+    ])
+  );
+
+  const date = parseDate(documentDate);
+
+  setCell(sheet, "I7", documentNumber, {
+    horizontal: "center",
+    shrinkToFit: true,
+    wrapText: false,
+  });
+
+  setCell(sheet, "K7", date.day, {
+    horizontal: "center",
+    wrapText: false,
+  });
+
+  setCell(
+    sheet,
+    "N7",
+    monthNameUkrainian(date.month),
+    {
+      horizontal: "center",
+      shrinkToFit: true,
+      wrapText: false,
+    }
+  );
+
+  setCell(
+    sheet,
+    "Q7",
+    date.year
+      ? date.year.slice(-2)
+      : "",
+    {
+      horizontal: "center",
+      wrapText: false,
+    }
+  );
+
+  setCell(
+    sheet,
+    "C9",
+    firstValue(data, [
+      "document.place",
+      "document_place",
+      "place",
+    ])
+  );
+
+  setCell(
+    sheet,
+    "C11",
+    firstValue(data, [
+      "vehicle.automobile",
+      "automobile",
+      "truck",
+      "expected.automobile",
+    ])
+  );
+
+  setCell(
+    sheet,
+    "L11",
+    firstValue(data, [
+      "vehicle.trailer",
+      "trailer",
+      "expected.trailer",
+    ])
+  );
+
+  const transportationType = clean(
+    firstValue(data, [
+      "transportation.type",
+      "transportation_type",
+      "transportation_kind",
+    ])
+  );
+
+  const transportationIsValid =
+    getByPath(
+      data,
+      "transportation.is_valid"
+    ) === true;
+
+  setCell(
+    sheet,
+    "X11",
+    transportationType
+  );
+
+  applyNewTransportationWarning(
+    sheet,
+    transportationIsValid
+  );
 
   /*
-    Виконуємо після всіх записів у XLSX, щоб ExcelJS
-    не залишив на статичних підписах спільні стилі
-    від сусідніх полів значень.
+    Повний текст адреси беремо тільки з правильних даних,
+    де Build Correct TTN Data вже використав Trips Database.
+    OCR-адресу Railway не використовує як джерело заповнення.
   */
-  normalizeStaticTtnLabels(sheet);
+  setCell(
+    sheet,
+    "D13",
+    firstValue(data, [
+      "vehicle.storage_location",
+      "truck_storage_location",
+    ])
+  );
+
+  setCell(
+    sheet,
+    "D15",
+    firstValue(data, [
+      "carrier.text",
+      "carrier",
+      "expected.carrier",
+    ])
+  );
+
+  setCell(
+    sheet,
+    "U15",
+    firstValue(data, [
+      "driver.driver_field",
+      "driver",
+      "expected.driver",
+    ])
+  );
+
+  setCell(
+    sheet,
+    "D17",
+    firstValue(data, [
+      "supplier.text",
+      "supplier",
+      "sender",
+    ])
+  );
+
+  setCell(
+    sheet,
+    "D19",
+    firstValue(data, [
+      "client.text",
+      "client",
+      "customer",
+      "receiver",
+    ])
+  );
+
+  setCell(
+    sheet,
+    "D21",
+    firstValue(data, [
+      "route.loading_point",
+      "loading_point",
+      "route_from",
+    ])
+  );
+
+  setCell(
+    sheet,
+    "R21",
+    firstValue(data, [
+      "route.unloading_point",
+      "unloading_point",
+      "route_to",
+    ])
+  );
+
+  setCell(
+    sheet,
+    "C23",
+    stripWordsMarker(
+      firstValue(data, [
+        "cargo.places_count_words",
+        "places_count_words",
+      ])
+    ),
+    {
+      horizontal: "center",
+    }
+  );
+
+  setCell(
+    sheet,
+    "H23",
+    stripWordsMarker(
+      firstValue(data, [
+        "cargo.gross_weight_words",
+        "gross_weight_words",
+      ])
+    ),
+    {
+      horizontal: "center",
+    }
+  );
+
+  setCell(
+    sheet,
+    "U23",
+    buildReceivedDriverText(data)
+  );
+
+  setCell(
+    sheet,
+    "H25",
+    stripDimensionUnit(
+      firstValue(
+        data,
+        ["dimensions.length", "length"]
+      )
+    ),
+    {
+      horizontal: "center",
+      wrapText: false,
+    }
+  );
+
+  setCell(
+    sheet,
+    "N25",
+    stripDimensionUnit(
+      firstValue(
+        data,
+        ["dimensions.width", "width"]
+      )
+    ),
+    {
+      horizontal: "center",
+      wrapText: false,
+    }
+  );
+
+  setCell(
+    sheet,
+    "Q25",
+    stripDimensionUnit(
+      firstValue(
+        data,
+        ["dimensions.height", "height"]
+      )
+    ),
+    {
+      horizontal: "center",
+      wrapText: false,
+    }
+  );
+
+  setCell(
+    sheet,
+    "U25",
+    buildTransportWeightsText(data),
+    {
+      horizontal: "center",
+      shrinkToFit: true,
+    }
+  );
+
+  setCell(
+    sheet,
+    "E27",
+    stripWordsMarker(
+      firstValue(data, [
+        "cargo.total_sum_words",
+        "total_sum_words",
+      ])
+    )
+  );
+
+  setCell(
+    sheet,
+    "X27",
+    calculateVatFromTotalWithVat(
+      firstValue(data, [
+        "cargo.total_sum_with_vat",
+        "total_sum_with_vat",
+        "totals.total_sum_with_vat",
+        "cargo.vat_amount",
+        "vat_amount",
+      ])
+    ),
+    {
+      horizontal: "right",
+      shrinkToFit: true,
+      wrapText: false,
+      numFmt: "#,##0.00",
+    }
+  );
+
+  setCell(
+    sheet,
+    "E29",
+    firstValue(data, [
+      "document.cargo_document_text",
+      "cargo_document_text",
+    ])
+  );
+
+  fillNewCargoTable(sheet, data);
+}
+
+function cellText(cell) {
+  const value = cell?.value;
+
+  if (
+    value &&
+    typeof value === "object" &&
+    Array.isArray(value.richText)
+  ) {
+    return value.richText
+      .map(part => clean(part?.text))
+      .join(" ")
+      .trim();
+  }
+
+  return clean(value);
+}
+
+function isNewTtnTemplate(sheet) {
+  const storageLabel = cellText(
+    sheet.getCell("A13")
+  ).toLowerCase();
+
+  const cargoTitle = cellText(
+    sheet.getCell("A32")
+  ).toLowerCase();
+
+  return (
+    storageLabel.includes(
+      "місце де зберігається автомобіль"
+    ) &&
+    cargoTitle.includes(
+      "відомості про вантаж"
+    )
+  );
+}
+
+function resolveTtnFormVersion(data) {
+  const version = clean(
+    firstValue(data, [
+      "form.version",
+      "ttn_form_version",
+    ])
+  ).toLowerCase();
+
+  const templateKey = clean(
+    firstValue(data, [
+      "form.template_key",
+      "ttn_template_key",
+    ])
+  ).toLowerCase();
+
+  if (
+    version !== "old" &&
+    version !== "new"
+  ) {
+    throw new Error(
+      "TTN form version is missing or invalid. Expected 'old' or 'new'."
+    );
+  }
+
+  const expectedTemplateKey =
+    version === "new"
+      ? "ttn_new"
+      : "ttn_old";
+
+  if (
+    templateKey &&
+    templateKey !== expectedTemplateKey
+  ) {
+    throw new Error(
+      `TTN form/template mismatch: version '${version}', template_key '${templateKey}'.`
+    );
+  }
+
+  return version;
 }
 
 
@@ -1425,133 +1986,6 @@ function datePartsForApplication(value) {
   };
 }
 
-function extractApplicationDateParts(value) {
-  const text = clean(value);
-
-  let match = text.match(
-    /(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})/
-  );
-
-  if (match) {
-    return {
-      day: match[1].padStart(2, "0"),
-      month: match[2].padStart(2, "0"),
-      year: match[3],
-    };
-  }
-
-  match = text.match(
-    /(\d{4})-(\d{1,2})-(\d{1,2})/
-  );
-
-  if (match) {
-    return {
-      day: match[3].padStart(2, "0"),
-      month: match[2].padStart(2, "0"),
-      year: match[1],
-    };
-  }
-
-  return {
-    day: "",
-    month: "",
-    year: "",
-  };
-}
-
-function formatApplicationDate(parts) {
-  if (!parts.day || !parts.month || !parts.year) {
-    return "";
-  }
-
-  return `${parts.day}.${parts.month}.${parts.year}`;
-}
-
-function addApplicationDays(value, days) {
-  const parts = extractApplicationDateParts(value);
-
-  if (!parts.day || !parts.month || !parts.year) {
-    return "";
-  }
-
-  const date = new Date(Date.UTC(
-    Number(parts.year),
-    Number(parts.month) - 1,
-    Number(parts.day)
-  ));
-
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  date.setUTCDate(date.getUTCDate() + Number(days || 0));
-
-  return [
-    String(date.getUTCDate()).padStart(2, "0"),
-    String(date.getUTCMonth() + 1).padStart(2, "0"),
-    String(date.getUTCFullYear()),
-  ].join(".");
-}
-
-function applicationTimeSuffix(value) {
-  const text = clean(value);
-  const match = text.match(/(?:^|\s)(?:з\s*)?(\d{1,2}:\d{2})(?:\s.*)?$/iu);
-
-  return match && match[1]
-    ? match[1]
-    : "";
-}
-
-function escapeRegExp(value) {
-  return String(value ?? "")
-    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function normalizeComparableText(value) {
-  return clean(value)
-    .toLowerCase()
-    .replace(/[’'`]/g, "")
-    .replace(/[–—−]/g, "-")
-    .replace(/[^a-zа-яіїєґ0-9]+/giu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function removeExactText(value, textToRemove) {
-  const source = clean(value);
-  const target = clean(textToRemove);
-
-  if (!source || !target) {
-    return source;
-  }
-
-  return source
-    .replace(new RegExp(escapeRegExp(target), "giu"), " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function buildApplicationTruckType(data) {
-  /*
-    Поле «ТИП АВТОМОБІЛЯ» бере тільки truck_type.
-
-    Не використовуємо trailer_type як fallback.
-    Не приєднуємо truck_body_type.
-    Не виконуємо розділення за символом "/",
-    оскільки в типі причепа зустрічається скорочення «н/пр».
-    Саме старе розділення «н/пр» створювало фрагмент
-    «пр тентований».
-  */
-  return clean(
-    firstValue(data, [
-      "truck_type",
-      "trip.truck_type",
-      "truck.truck_type",
-      "vehicle.truck.truck_type"
-    ])
-  );
-}
-
 function buildApplicationAliases(data) {
   const aliases = {};
   const appDate = firstValue(data, [
@@ -1572,56 +2006,10 @@ function buildApplicationAliases(data) {
     "loading_datetime",
     "application_date",
   ]);
-
-  const servicePeriodValue = firstValue(data, [
-    "service_period",
-    "transport_period",
-    "loading_date",
-    "loading_datetime",
-    "application_date",
-  ]);
-
-  const serviceStartDate = formatApplicationDate(
-    extractApplicationDateParts(servicePeriodValue)
-  );
-  const serviceEndDate = addApplicationDays(
-    serviceStartDate,
-    2
-  );
-
-  const existingUnloadingDateTime = firstValue(data, [
-    "unloading_datetime",
+  aliases.unloading_date = firstValue(data, [
     "unloading_date",
+    "unloading_datetime",
   ]);
-  const unloadingTime = applicationTimeSuffix(
-    existingUnloadingDateTime
-  );
-
-  aliases.service_period =
-    serviceStartDate && serviceEndDate
-      ? `${serviceStartDate} – ${serviceEndDate}`
-      : firstValue(data, ["service_period", "transport_period"]);
-
-  // У DOCX-шаблоні поле «СТРОК ПЕРЕВЕЗЕННЯ» використовує
-  // placeholder {{transport_period}}. Воно повинно формуватися
-  // за тією самою схемою: перша дата – перша дата + 2 дні.
-  aliases.transport_period = aliases.service_period;
-
-  aliases.unloading_date =
-    serviceEndDate ||
-    firstValue(data, [
-      "unloading_date",
-      "unloading_datetime",
-    ]);
-
-  aliases.unloading_datetime = serviceEndDate
-    ? [serviceEndDate, unloadingTime]
-        .filter(Boolean)
-        .join(" ")
-    : existingUnloadingDateTime;
-
-  aliases.truck_type =
-    buildApplicationTruckType(data);
 
   aliases.route_from = firstValue(data, [
     "route_from",
@@ -1675,22 +2063,6 @@ function buildApplicationAliases(data) {
 }
 
 function placeholderValue(data, key, flattened, aliases) {
-  const forcedApplicationAliasKeys = new Set([
-    "truck_type",
-    "service_period",
-    "transport_period",
-    "unloading_date",
-    "unloading_datetime",
-  ]);
-
-  if (
-    forcedApplicationAliasKeys.has(key) &&
-    Object.prototype.hasOwnProperty.call(aliases, key) &&
-    clean(aliases[key]) !== ""
-  ) {
-    return aliases[key];
-  }
-
   const direct = getByPath(data, key);
 
   if (
@@ -1803,33 +2175,11 @@ function applicationTemplateData(data) {
   const flattened = flattenObject(data);
   const aliases = buildApplicationAliases(data);
 
-  const output = {
+  return {
     ...flattened,
     ...aliases,
     ...data,
   };
-
-  /*
-    Ці поля формуються сервером за правилами заявки
-    й повинні мати пріоритет над старими значеннями,
-    які могла надіслати закешована версія адмінки.
-  */
-  for (const key of [
-    "truck_type",
-    "service_period",
-    "transport_period",
-    "unloading_date",
-    "unloading_datetime",
-  ]) {
-    if (
-      Object.prototype.hasOwnProperty.call(aliases, key) &&
-      clean(aliases[key]) !== ""
-    ) {
-      output[key] = aliases[key];
-    }
-  }
-
-  return output;
 }
 
 function docxErrorText(error) {
@@ -1914,7 +2264,7 @@ app.get("/health", (req, res) => {
   res.json({
     ok: true,
     service: "ttn-xlsx-service",
-    version: "5.9.7",
+    version: "6.0.0",
   });
 });
 
@@ -1961,6 +2311,7 @@ app.post(
 
       const sheet =
         workbook.getWorksheet("TTN") ||
+        workbook.getWorksheet("TTН") ||
         workbook.worksheets[0];
 
       if (!sheet) {
@@ -1971,7 +2322,41 @@ app.post(
         return;
       }
 
-      fillWorkbook(sheet, data);
+      const formVersion =
+        resolveTtnFormVersion(data);
+
+      const templateIsNew =
+        isNewTtnTemplate(sheet);
+
+      if (
+        formVersion === "new" &&
+        !templateIsNew
+      ) {
+        res.status(400).json({
+          ok: false,
+          error:
+            "The payload requires the new TTN form, but the uploaded XLSX is not the new template.",
+        });
+        return;
+      }
+
+      if (
+        formVersion === "old" &&
+        templateIsNew
+      ) {
+        res.status(400).json({
+          ok: false,
+          error:
+            "The payload requires the old TTN form, but the uploaded XLSX is the new template.",
+        });
+        return;
+      }
+
+      if (formVersion === "new") {
+        fillNewWorkbook(sheet, data);
+      } else {
+        fillOldWorkbook(sheet, data);
+      }
 
       workbook.calcProperties.fullCalcOnLoad = true;
       workbook.calcProperties.forceFullCalc = true;
@@ -2037,221 +2422,193 @@ app.post(
 );
 
 
-
-async function fillApplicationXlsxHandler(req, res) {
-  try {
-    let payload;
-
-    try {
-      payload = parseRequestPayload(req);
-    } catch (error) {
-      res.status(error.statusCode || 400).json({
-        ok: false,
-        error: error.message,
-      });
-      return;
-    }
-
-    const data = normalizeApplicationPayload(payload);
-
-    if (!data || typeof data !== "object") {
-      res.status(400).json({
-        ok: false,
-        error: "Missing application_data object.",
-      });
-      return;
-    }
-
-    const templateBuffer = req.file && req.file.buffer
-      ? req.file.buffer
-      : fs.readFileSync(APPLICATION_TEMPLATE_PATH);
-
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(templateBuffer);
-
-    fillApplicationWorkbook(workbook, data);
-
-    const generatedFileName = applicationFileName(
-      data,
-      clean(req.body?.outputFileName || payload.outputFileName)
-    );
-
-    const outputBuffer = await workbook.xlsx.writeBuffer();
-    const mimeType =
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-
-    const shouldReturnJson =
-      truthy(req.body?.returnJson) ||
-      truthy(req.body?.return_json) ||
-      truthy(payload.returnJson) ||
-      truthy(payload.return_json) ||
-      truthy(req.query.returnJson) ||
-      truthy(req.query.return_json) ||
-      clean(req.query.format).toLowerCase() === "json";
-
-    res.setHeader("Cache-Control", "no-store");
-
-    if (shouldReturnJson) {
-      res.status(200).json({
-        ok: true,
-        filename: generatedFileName,
-        mime_type: mimeType,
-        file_base64: Buffer.from(outputBuffer).toString("base64"),
-      });
-      return;
-    }
-
-    res.setHeader("Content-Type", mimeType);
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename*=UTF-8''${encodeURIComponent(generatedFileName)}`
-    );
-    res.setHeader(
-      "X-Generated-File-Name",
-      encodeURIComponent(generatedFileName)
-    );
-
-    res.status(200).send(Buffer.from(outputBuffer));
-  } catch (error) {
-    console.error(error);
-
-    res.status(500).json({
-      ok: false,
-      error:
-        error && error.message
-          ? error.message
-          : "Failed to fill application XLSX template.",
-    });
-  }
-}
-
-async function fillApplicationDocxHandler(req, res) {
-  try {
-    let payload;
-
-    try {
-      payload = parseRequestPayload(req);
-    } catch (error) {
-      res.status(error.statusCode || 400).json({
-        ok: false,
-        error: error.message,
-      });
-      return;
-    }
-
-    const data = normalizeApplicationPayload(payload);
-
-    if (!data || typeof data !== "object") {
-      res.status(400).json({
-        ok: false,
-        error: "Missing application_data object.",
-      });
-      return;
-    }
-
-    const templateBuffer = req.file && req.file.buffer
-      ? req.file.buffer
-      : fs.readFileSync(APPLICATION_DOCX_TEMPLATE_PATH);
-
-    let outputBuffer;
-
-    try {
-      outputBuffer = fillApplicationDocx(templateBuffer, data);
-    } catch (error) {
-      res.status(400).json({
-        ok: false,
-        error: docxErrorText(error),
-      });
-      return;
-    }
-
-    const generatedFileName = applicationDocxFileName(
-      data,
-      clean(
-        req.body?.outputFileName ||
-        payload.outputFileName ||
-        payload.filename
-      )
-    );
-
-    const mimeType =
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-
-    const shouldReturnJson =
-      truthy(req.body?.returnJson) ||
-      truthy(req.body?.return_json) ||
-      truthy(payload.returnJson) ||
-      truthy(payload.return_json) ||
-      truthy(req.query.returnJson) ||
-      truthy(req.query.return_json) ||
-      clean(req.query.format).toLowerCase() === "json";
-
-    res.setHeader("Cache-Control", "no-store");
-
-    if (shouldReturnJson) {
-      res.status(200).json({
-        ok: true,
-        filename: generatedFileName,
-        mime_type: mimeType,
-        file_base64: Buffer.from(outputBuffer).toString("base64"),
-      });
-      return;
-    }
-
-    res.setHeader("Content-Type", mimeType);
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename*=UTF-8''${encodeURIComponent(generatedFileName)}`
-    );
-    res.setHeader(
-      "X-Generated-File-Name",
-      encodeURIComponent(generatedFileName)
-    );
-
-    res.status(200).send(Buffer.from(outputBuffer));
-  } catch (error) {
-    console.error(error);
-
-    res.status(500).json({
-      ok: false,
-      error:
-        error && error.message
-          ? error.message
-          : "Failed to fill application DOCX template.",
-    });
-  }
-}
-
-/*
-  Канонічний endpoint заявки тепер завжди формує DOCX.
-
-  Раніше:
-  - /fill-application формував XLSX;
-  - /fill-application-docx формував DOCX.
-
-  Через це різні або закешовані версії адмінки могли отримувати різний формат.
-
-  Тепер:
-  - /fill-application       -> DOCX;
-  - /fill-application-docx  -> DOCX;
-  - /fill-application-xlsx  -> XLSX, лише для явного запиту Excel.
-*/
 app.post(
-  "/fill-application-xlsx",
+  "/fill-application",
   requireApiToken,
   upload.single("template"),
-  fillApplicationXlsxHandler
+  async (req, res) => {
+    try {
+      let payload;
+
+      try {
+        payload = parseRequestPayload(req);
+      } catch (error) {
+        res.status(error.statusCode || 400).json({
+          ok: false,
+          error: error.message,
+        });
+        return;
+      }
+
+      const data = normalizeApplicationPayload(payload);
+
+      if (!data || typeof data !== "object") {
+        res.status(400).json({
+          ok: false,
+          error: "Missing application_data object.",
+        });
+        return;
+      }
+
+      const templateBuffer = req.file && req.file.buffer
+        ? req.file.buffer
+        : fs.readFileSync(APPLICATION_TEMPLATE_PATH);
+
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(templateBuffer);
+
+      fillApplicationWorkbook(workbook, data);
+
+      const generatedFileName = applicationFileName(
+        data,
+        clean(req.body?.outputFileName || payload.outputFileName)
+      );
+
+      const outputBuffer = await workbook.xlsx.writeBuffer();
+      const mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+      const shouldReturnJson =
+        truthy(req.body?.returnJson) ||
+        truthy(req.body?.return_json) ||
+        truthy(payload.returnJson) ||
+        truthy(payload.return_json) ||
+        truthy(req.query.returnJson) ||
+        truthy(req.query.return_json) ||
+        clean(req.query.format).toLowerCase() === "json";
+
+      if (shouldReturnJson) {
+        res.status(200).json({
+          ok: true,
+          filename: generatedFileName,
+          mime_type: mimeType,
+          file_base64: Buffer.from(outputBuffer).toString("base64"),
+        });
+        return;
+      }
+
+      res.setHeader("Content-Type", mimeType);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename*=UTF-8''${encodeURIComponent(generatedFileName)}`
+      );
+      res.setHeader(
+        "X-Generated-File-Name",
+        encodeURIComponent(generatedFileName)
+      );
+
+      res.status(200).send(Buffer.from(outputBuffer));
+    } catch (error) {
+      console.error(error);
+
+      res.status(500).json({
+        ok: false,
+        error:
+          error && error.message
+            ? error.message
+            : "Failed to fill application template.",
+      });
+    }
+  }
 );
 
+
 app.post(
-  ["/fill-application", "/fill-application-docx"],
+  "/fill-application-docx",
   requireApiToken,
   upload.single("template"),
-  fillApplicationDocxHandler
+  async (req, res) => {
+    try {
+      let payload;
+
+      try {
+        payload = parseRequestPayload(req);
+      } catch (error) {
+        res.status(error.statusCode || 400).json({
+          ok: false,
+          error: error.message,
+        });
+        return;
+      }
+
+      const data = normalizeApplicationPayload(payload);
+
+      if (!data || typeof data !== "object") {
+        res.status(400).json({
+          ok: false,
+          error: "Missing application_data object.",
+        });
+        return;
+      }
+
+      const templateBuffer = req.file && req.file.buffer
+        ? req.file.buffer
+        : fs.readFileSync(APPLICATION_DOCX_TEMPLATE_PATH);
+
+      let outputBuffer;
+
+      try {
+        outputBuffer = fillApplicationDocx(templateBuffer, data);
+      } catch (error) {
+        res.status(400).json({
+          ok: false,
+          error: docxErrorText(error),
+        });
+        return;
+      }
+
+      const generatedFileName = applicationDocxFileName(
+        data,
+        clean(req.body?.outputFileName || payload.outputFileName || payload.filename)
+      );
+
+      const mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+      const shouldReturnJson =
+        truthy(req.body?.returnJson) ||
+        truthy(req.body?.return_json) ||
+        truthy(payload.returnJson) ||
+        truthy(payload.return_json) ||
+        truthy(req.query.returnJson) ||
+        truthy(req.query.return_json) ||
+        clean(req.query.format).toLowerCase() === "json";
+
+      if (shouldReturnJson) {
+        res.status(200).json({
+          ok: true,
+          filename: generatedFileName,
+          mime_type: mimeType,
+          file_base64: Buffer.from(outputBuffer).toString("base64"),
+        });
+        return;
+      }
+
+      res.setHeader("Content-Type", mimeType);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename*=UTF-8''${encodeURIComponent(generatedFileName)}`
+      );
+      res.setHeader(
+        "X-Generated-File-Name",
+        encodeURIComponent(generatedFileName)
+      );
+
+      res.status(200).send(Buffer.from(outputBuffer));
+    } catch (error) {
+      console.error(error);
+
+      res.status(500).json({
+        ok: false,
+        error:
+          error && error.message
+            ? error.message
+            : "Failed to fill application DOCX template.",
+      });
+    }
+  }
 );
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(
-    `TTN XLSX/DOCX service v5.9.7 is running on port ${PORT}`
+    `TTN XLSX/DOCX service v6.0.0 is running on port ${PORT}`
   );
 });

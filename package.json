@@ -1,8 +1,8 @@
 {
   "name": "ttn-xlsx-service",
-  "version": "5.9.7",
+  "version": "6.0.0",
   "private": true,
-  "description": "Railway TTN service v5.9.7: dimension values use font underline without bottom cell borders",
+  "description": "Railway TTN service v6.0: old/new TTN templates with strict form-template validation",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
