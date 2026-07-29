@@ -1,145 +1,276 @@
-# HR Portal API v1
+# TTN XLSX Railway service
 
-Окремий read-only API для порталу «Овопрайм». Він читає актуальну штатну
-структуру з PostgreSQL `hr_portal`, але не може додавати, змінювати або видаляти
-дані.
+## Версія 6.0
 
-## Що вже реалізовано
+- Один endpoint `/fill-ttn` обслуговує стару й нову форми ТТН.
+- Форма визначається тільки з `correct_ttn_data.form.version` / `form.template_key`.
+- Сервіс не вгадує форму за датою.
+- Перевіряється відповідність payload і завантаженого XLSX-шаблону.
+- Нова форма заповнює поле місця зберігання автомобіля з `vehicle.storage_location`.
+- Нова форма має чотири товарні рядки 35–38; понад 4 позиції повертають помилку замість обрізання.
+- Стара форма використовує перевірену логіку v5.7 без зміни координат.
 
-- `GET /health` — перевірка, що HTTP-сервер API працює.
-- `GET /ready` — окрема перевірка з'єднання з PostgreSQL.
-- `GET /api/departments` — підрозділи, кількість посад, працівників і вакансій.
-- `GET /api/employees` — список працівників із пошуком, фільтрами й пагінацією.
-- `GET /api/employees/:id` — картка одного працівника.
-- API-ключ у заголовку `X-API-Key`.
-- CORS лише для дозволених адрес порталу.
-- обмеження частоти запитів, безпечні HTTP-заголовки та приховування секретних
-  заголовків у логах.
-- Dockerfile і конфігурація для Railway.
+Railway-сервіс для заповнення XLSX-шаблону товарно-транспортної накладної.
 
-У цій версії навмисно немає `POST`, `PATCH` або `DELETE`.
+## Endpoint
 
-## Крок 1. Створити користувача бази тільки для читання
+### GET /health
 
-1. Відкрийте в DBeaver підключення до бази `hr_portal` під користувачем
-   `postgres`.
-2. Відкрийте файл `sql/01_create_hr_portal_reader.sql.txt`.
-3. Згенеруйте у менеджері паролів випадковий пароль довжиною щонайменше
-   32 символи.
-4. Замініть у файлі
-   `REPLACE_WITH_A_RANDOM_32_PLUS_CHARACTER_PASSWORD` на цей пароль.
-5. Виконайте весь SQL-файл.
-6. Не надсилайте пароль у чат і не зберігайте копію SQL-файлу з підставленим
-   паролем.
+Перевірка, що сервіс працює.
 
-Останні два запити у файлі перевірять результат. Для ролі мають бути вимкнені
-права адміністратора, а для таблиць: `can_select = true`, `can_write = false`.
+### POST /fill-ttn
 
-## Крок 2. Завантажити проєкт у GitHub
+`multipart/form-data`:
 
-Створіть приватний репозиторій, наприклад `hr-portal-api`, і завантажте в нього
-вміст цієї папки. Файл `.env` із секретами не створюйте в репозиторії та не
-комітьте.
+- `template` — XLSX-файл шаблону;
+- `payload` — JSON-рядок з `correct_ttn_data` або повним output ноди `Build Correct TTN Data`;
+- `outputFileName` — необов’язкова назва готового файла.
 
-## Крок 3. Розгорнути API на Railway
+Відповідь: готовий XLSX-файл.
 
-1. У потрібному Railway-проєкті натисніть **New → GitHub Repo**.
-2. Виберіть приватний репозиторій `hr-portal-api`.
-3. У сервісі відкрийте **Variables** і додайте:
+## Railway
 
-```text
-NODE_ENV=production
-DATABASE_URL=postgresql://hr_portal_reader:YOUR_PASSWORD@shortline.proxy.rlwy.net:48195/hr_portal
-DATABASE_SSL=true
-DATABASE_SSL_REJECT_UNAUTHORIZED=false
-DATABASE_POOL_MAX=5
-API_ACCESS_TOKEN=YOUR_RANDOM_32_PLUS_CHARACTER_TOKEN
-ALLOWED_ORIGINS=https://hr-portal-yaico.bridge182.chatgpt.site
-LOG_LEVEL=info
-```
+1. Створи новий GitHub-репозиторій.
+2. Завантаж у нього файли цього архіву.
+3. У Railway натисни `New Project → Deploy from GitHub Repo`.
+4. Додай змінну:
+   - `API_TOKEN` — довільний складний секретний рядок.
+5. Railway автоматично виконає `npm install` і `npm start`.
+6. Перевір:
+   - `https://YOUR-SERVICE.up.railway.app/health`
 
-Для `DATABASE_URL` використайте пароль `hr_portal_reader`. Якщо пароль містить
-символи на кшталт `@`, `:`, `/`, `?` або `#`, їх треба URL-кодувати. Безпечний
-простий варіант — згенерувати довгий пароль з літер і цифр.
+## n8n: HTTP Request
 
-`API_ACCESS_TOKEN` — інший незалежний випадковий секрет. Не використовуйте для
-нього пароль бази.
+- Method: `POST`
+- URL: `https://YOUR-SERVICE.up.railway.app/fill-ttn`
+- Authentication: None
+- Header:
+  - `x-api-key: <API_TOKEN>`
+- Send Body: ON
+- Body Content Type: `Multipart Form-Data`
 
-Railway сам задає змінну `PORT`, тому вручну її додавати не треба.
+Параметри:
 
-## Крок 4. Додати адресу API і перевірити
+1. Parameter Type: `n8n Binary File`
+   - Name: `template`
+   - Input Data Field Name: `data`
 
-Після успішного розгортання у Railway відкрийте **Settings → Networking →
-Generate Domain**.
+2. Parameter Type: `Form Data`
+   - Name: `payload`
+   - Value:
+     `{{ JSON.stringify($('Build Correct TTN Data').first().json.correct_ttn_data || $('Build Correct TTN Data').first().json) }}`
 
-Перевірка, що API запущений:
+3. Parameter Type: `Form Data`
+   - Name: `outputFileName`
+   - Value:
+     `{{ 'ТТН_' + ($('Build Correct TTN Data').first().json.correct_ttn_data?.document_number || $('Build Correct TTN Data').first().json.document?.document_number || 'без_номера') + '.xlsx' }}`
 
-```text
-https://YOUR-API-DOMAIN/health
-```
+Response:
+- Response Format: `File`
+- Put Output in Field: `data`
 
-Очікувана відповідь:
+## Google Drive
+
+Перед HTTP Request:
+
+- Google Drive node
+- Resource: `File`
+- Operation: `Download`
+- File: вибрати XLSX-шаблон
+- Put Output File in Field: `data`
+
+Після HTTP Request можна зробити дві гілки:
+
+1. Google Drive — Upload готового XLSX.
+2. Telegram — Send Document з Binary Property `data`.
+
+## Обмеження першої версії
+
+- Максимум 5 позицій вантажу — рядки 29–33.
+- Рядок 34 — підсумки.
+- Шаблон повинен містити аркуш `TTN`.
+- Якщо аркуша `TTN` немає, використовується перший аркуш.
+
+
+## Fix in v2
+
+The service now reads the full nested `correct_ttn_data` object instead of
+discarding everything except `correct_ttn_data.document`.
+
+Supported nested sections:
+`document`, `vehicle`, `transportation`, `carrier`, `driver`,
+`supplier`, `client`, `route`, `dimensions`, `cargo`.
+
+
+## Зміни v3
+
+1. Довжина, ширина та висота записуються без `м`.
+2. У полі «отримав водій/експедитор» записуються ПІБ і ЄДДР без посвідчення.
+3. Із текстових полів видаляється службовий напис `(словами)`.
+4. Неправильний або відсутній «Вид перевезень» не блокує створення XLSX.
+5. `/health` повертає `"version": "3.0.0"`.
+
+
+## Зміни v4
+
+Якщо поле «Вид перевезень» неправильне або порожнє:
+
+- XLSX однаково формується;
+- фактичне значення залишається в комірці;
+- перед значенням додається символ `⚠`;
+- комірка виділяється світло-червоним;
+- текст стає темно-червоним і жирним;
+- до комірки додається примітка з допустимими значеннями.
+
+Якщо значення правильне, оформлення шаблону не змінюється.
+
+`/health` повертає `"version": "4.0.0"`.
+
+
+## Виправлення v5
+
+- Підсвічується лише поле `H7:J7` з неправильним видом перевезень.
+- Підсвічування — тільки світло-червоний фон.
+- Текст, шрифт, жирність і вирівнювання не змінюються.
+- Символ `⚠` у значення більше не додається.
+- Інші поля шаблону не отримують червоне оформлення.
+- Перед зміною фону стиль `H7` клонуються, щоб не змінювати інші
+  клітинки, які в шаблоні використовують спільний стиль.
+- `/health` повертає `"version": "5.0.0"`.
+
+
+---
+
+## Endpoint заявки
+
+### POST /fill-application
+
+Заповнює XLSX-шаблон договору-заявки на перевезення.
+
+Може працювати у двох режимах.
+
+### Варіант 1: JSON без передачі шаблону
+
+Сервіс використовує вбудований шаблон:
+
+- `templates/zayavka_perevezennia_template.xlsx`
+
+Request:
 
 ```json
 {
-  "status": "ok"
+  "filename": "Заявка_09.07.2026_Дніпро_Дніпро.xlsx",
+  "returnJson": true,
+  "application_data": {
+    "application_number": "09/07",
+    "application_date": "09.07.2026",
+    "customer_name": "ТОВ ОВОПРАЙМ",
+    "carrier_name": "ФОП ...",
+    "route_from": "Дніпро",
+    "route_to": "Дніпро",
+    "price_text": "2500,00 грн",
+    "vehicle_driver_text": "DAF ..."
+  }
 }
 ```
 
-Перевірка PostgreSQL:
+Якщо `returnJson: true`, відповідь:
 
-```text
-https://YOUR-API-DOMAIN/ready
+```json
+{
+  "ok": true,
+  "filename": "Заявка_09.07.2026_Дніпро_Дніпро.xlsx",
+  "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "file_base64": "..."
+}
 ```
 
-Очікується `status: "ready"`, `database: "connected"`,
-`databaseName: "hr_portal"` і `databaseUser: "hr_portal_reader"`.
+Цей режим зручний для адмінки: n8n просто повертає JSON в `Respond to Webhook`, а фронт завантажує файл із `file_base64`.
 
-Перевірка працівників у PowerShell:
+### Варіант 2: multipart/form-data з власним шаблоном
 
-```powershell
-$headers = @{ "X-API-Key" = "YOUR_RANDOM_API_ACCESS_TOKEN" }
-Invoke-RestMethod `
-  -Uri "https://YOUR-API-DOMAIN/api/employees?limit=5" `
-  -Headers $headers
+Параметри:
+
+- `template` — XLSX-файл шаблону;
+- `payload` — JSON-рядок з `application_data`;
+- `outputFileName` — необов’язкова назва файла;
+- `returnJson` — `true`, якщо треба повернути JSON з `file_base64`.
+
+### n8n: HTTP Request для заявки
+
+- Method: `POST`
+- URL: `https://YOUR-SERVICE.up.railway.app/fill-application`
+- Header:
+  - `x-api-key: <API_TOKEN>`
+- Send Body: ON
+- Body Content Type: JSON
+
+Body:
+
+```json
+{
+  "filename": "{{ $json.filename }}",
+  "returnJson": true,
+  "application_data": {{ $json.application_data }}
+}
 ```
 
-У полі `pagination.total` для поточного імпорту очікується `65`.
+Після HTTP Request:
 
-## Параметри списку працівників
+- `Respond to Webhook`
+- `Respond With: JSON`
+- `Response Body: {{ $json }}`
 
-```text
-GET /api/employees?query=Ковальова
-GET /api/employees?department=Бухгалтерія
-GET /api/employees?status=active
-GET /api/employees?limit=25&offset=0
-```
+Адмінка вже підтримує `file_base64`.
 
-Параметри можна поєднувати. Максимальний `limit` — 100.
 
-## Важливі правила безпеки
+## Виправлення v5.3
 
-- API підключається лише під `hr_portal_reader`, не під `postgres` і не під
-  власником бази `hr_portal_app`.
-- Паролі співробітників, RDP, BitLocker і ліцензійні ключі цей API не читає й
-  не зберігає.
-- `API_ACCESS_TOKEN` не можна вставляти у JavaScript статичної вебсторінки:
-  відвідувач браузера зможе його побачити. На наступному етапі портал
-  звертатиметься до API через серверний проксі або власну серверну частину.
-- Для майбутнього редагування даних буде окрема роль і окремі перевірені
-  маршрути з журналом аудиту.
+- У товарних рядках `A29:L33` примусово прибирається зелений фон.
+- Стиль кожної комірки попередньо клонується, тому зміна не зачіпає межі, шрифт і вирівнювання інших клітинок.
+- Із товарного діапазону також видаляється умовне форматування, яке могло повторно вмикати зелений фон після запису значень.
+- Очищення фону виконується повторно після повного заповнення таблиці.
+- `K21` записується як звичайне числове значення, щоб формат комірки застосовувався самим Excel або Google Sheets.
+- `/health` повертає `"version": "5.3.0"`.
 
-## Локальна перевірка
 
-Потрібні Node.js 22+ і власний файл `.env` зі значеннями за прикладом
-`.env.example`.
+## Версія 5.4.0
 
-```bash
-npm ci
-npm run typecheck
-npm run build
-npm start
-```
+- Комірка `L34` отримує підсумкову масу брутто як звичайне числове значення у кілограмах.
+- Приклад: `cargo.gross_weight = "18.900"` → у `L34` записується число `18900`.
+- Формат відображення залишається відповідальністю XLSX-шаблону.
 
-Для перенесення на власний хостинг достатньо Docker-сумісного середовища та тих
-самих змінних оточення.
+
+## Версія 5.5.0
+
+- Комірки `L29:L33` отримують масу брутто кожної товарної позиції як звичайне числове значення у кілограмах.
+- Приклад: `cargo.items[0].gross_weight = "18.900"` → у рядок записується число `18900`.
+- Для однієї позиції n8n передає загальну масу брутто в її товарний рядок.
+- Для кількох позицій n8n передає окремо розпізнану масу кожного рядка.
+
+
+## Версія 5.6.0
+
+Усі значення маси брутто у таблиці ТТН записуються у тоннах:
+
+- товарні рядки `L29:L33`;
+- загальна маса `L34`.
+
+Приклади:
+
+- `16.100` т → числове значення `16.1`;
+- `2.800` т → числове значення `2.8`;
+- `18.900` т → числове значення `18.9`.
+
+Шаблон Excel відображає значення з потрібною кількістю знаків після коми.
+
+
+## Версія 5.7.0
+
+Форматування полів:
+
+- `A7:E7` — назва «Автомобіль» без підкреслення, вставлене значення підкреслене;
+- `F7:G7` — назва «Причіп/напівпричіп» без підкреслення, вставлене значення підкреслене;
+- `H7:J7` — назва «Вид перевезень» без підкреслення, вставлене значення підкреслене;
+- `F19`, `G19`, `I19` — значення довжини, ширини та висоти підкреслені;
+- підписи габаритів у шаблоні не змінюються.
