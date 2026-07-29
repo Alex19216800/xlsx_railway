@@ -1,0 +1,87 @@
+-- HR Portal: створення окремого користувача PostgreSQL тільки для читання.
+--
+-- Перед запуском:
+-- 1. Підключіться у DBeaver до бази hr_portal під користувачем postgres.
+-- 2. Згенеруйте випадковий пароль довжиною щонайменше 32 символи.
+-- 3. Замініть REPLACE_WITH_A_RANDOM_32_PLUS_CHARACTER_PASSWORD нижче.
+-- 4. Не надсилайте пароль у чат і не зберігайте цей файл після підстановки пароля.
+
+DO $$
+BEGIN
+  IF current_database() <> 'hr_portal' THEN
+    RAISE EXCEPTION
+      'Wrong database: expected hr_portal, connected to %',
+      current_database();
+  END IF;
+END
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_roles
+    WHERE rolname = 'hr_portal_reader'
+  ) THEN
+    CREATE ROLE hr_portal_reader
+      LOGIN
+      NOSUPERUSER
+      NOCREATEDB
+      NOCREATEROLE
+      NOINHERIT
+      NOREPLICATION;
+  END IF;
+END
+$$;
+
+ALTER ROLE hr_portal_reader
+  WITH PASSWORD 'REPLACE_WITH_A_RANDOM_32_PLUS_CHARACTER_PASSWORD';
+
+REVOKE ALL ON DATABASE hr_portal FROM hr_portal_reader;
+GRANT CONNECT ON DATABASE hr_portal TO hr_portal_reader;
+
+REVOKE ALL ON SCHEMA public FROM hr_portal_reader;
+GRANT USAGE ON SCHEMA public TO hr_portal_reader;
+
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM hr_portal_reader;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO hr_portal_reader;
+
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM hr_portal_reader;
+
+-- Нові таблиці, які надалі створюватиме власник hr_portal_app,
+-- автоматично будуть доступні hr_portal_reader тільки для читання.
+ALTER DEFAULT PRIVILEGES
+  FOR ROLE hr_portal_app
+  IN SCHEMA public
+  GRANT SELECT ON TABLES TO hr_portal_reader;
+
+-- Перевірка ролі. Очікується:
+-- can_login = true; усі інші прапорці = false.
+SELECT
+  rolname,
+  rolcanlogin AS can_login,
+  rolsuper AS is_superuser,
+  rolcreatedb AS can_create_database,
+  rolcreaterole AS can_create_role,
+  rolreplication AS can_replicate
+FROM pg_roles
+WHERE rolname = 'hr_portal_reader';
+
+-- Перевірка прав на таблиці.
+-- Для кожної таблиці очікується can_select = true, can_write = false.
+SELECT
+  table_name,
+  has_table_privilege(
+    'hr_portal_reader',
+    format('public.%I', table_name),
+    'SELECT'
+  ) AS can_select,
+  has_table_privilege(
+    'hr_portal_reader',
+    format('public.%I', table_name),
+    'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER'
+  ) AS can_write
+FROM information_schema.tables
+WHERE table_schema = 'public'
+  AND table_type = 'BASE TABLE'
+ORDER BY table_name;
