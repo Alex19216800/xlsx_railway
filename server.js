@@ -1239,13 +1239,13 @@ function calculateVatFromTotalWithVat(value) {
 }
 
 function clearNewCargoRows(sheet) {
-  for (let row = 35; row <= 38; row += 1) {
+  for (let row = 35; row <= 39; row += 1) {
     for (let column = 1; column <= 26; column += 1) {
       sheet.getCell(row, column).value = "";
     }
   }
 
-  for (const address of ["O39", "U39", "Z39"]) {
+  for (const address of ["O40", "U40", "Z40"]) {
     sheet.getCell(address).value = "";
   }
 }
@@ -1255,9 +1255,9 @@ function fillNewCargoTable(sheet, data) {
 
   const allItems = cargoItemsFrom(data);
 
-  if (allItems.length > 4) {
+  if (allItems.length > 5) {
     throw new Error(
-      `New TTN template supports a maximum of 4 cargo items, received ${allItems.length}.`
+      `New TTN template supports a maximum of 5 cargo items, received ${allItems.length}.`
     );
   }
 
@@ -1413,7 +1413,7 @@ function fillNewCargoTable(sheet, data) {
 
   setCell(
     sheet,
-    "O39",
+    "O40",
     toNumericCellValue(
       firstValue(data, [
         "cargo.total_places",
@@ -1431,7 +1431,7 @@ function fillNewCargoTable(sheet, data) {
 
   setCell(
     sheet,
-    "U39",
+    "U40",
     toNumericCellValue(
       firstValue(data, [
         "cargo.total_sum_with_vat",
@@ -1450,7 +1450,7 @@ function fillNewCargoTable(sheet, data) {
 
   setCell(
     sheet,
-    "Z39",
+    "Z40",
     grossWeightTonnesToCellValue(
       firstValue(data, [
         "cargo.gross_weight",
@@ -2264,7 +2264,7 @@ app.get("/health", (req, res) => {
   res.json({
     ok: true,
     service: "ttn-xlsx-service",
-    version: "6.0.0",
+    version: "6.1.0",
   });
 });
 
@@ -2609,6 +2609,6 @@ app.post(
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(
-    `TTN XLSX/DOCX service v6.0.0 is running on port ${PORT}`
+    `TTN XLSX/DOCX service v6.1.0 is running on port ${PORT}`
   );
 });
