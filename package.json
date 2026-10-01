@@ -1,8 +1,8 @@
 {
   "name": "ttn-xlsx-service",
-  "version": "6.1.0",
+  "version": "6.5.0",
   "private": true,
-  "description": "Railway TTN service v6.1: new TTN form supports up to five cargo items",
+  "description": "Railway TTN service v6.5.0: all-field verification highlights",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {

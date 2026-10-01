@@ -612,9 +612,10 @@ function grossWeightTonnesToCellValue(value) {
 function applyTransportationWarning(
   sheet,
   transportationType,
-  isValid
+  isValid,
+  status
 ) {
-  if (isValid) {
+  if (status ? status !== "different" : isValid) {
     return;
   }
 
@@ -995,6 +996,7 @@ function fillOldWorkbook(sheet, data) {
       data,
       "transportation.is_valid"
     ) === true;
+  const transportationStatus = clean(getByPath(data, "transportation.status"));
 
   setLabelWithUnderlinedValue(
     sheet,
@@ -1020,7 +1022,8 @@ function fillOldWorkbook(sheet, data) {
   applyTransportationWarning(
     sheet,
     transportationType,
-    transportationIsValid
+    transportationIsValid,
+    transportationStatus
   );
 
   setCell(
@@ -1334,7 +1337,7 @@ function fillNewCargoTable(sheet, data) {
       {
         horizontal: "center",
         wrapText: false,
-        numFmt: "0",
+        numFmt: "General",
       }
     );
 
@@ -1351,7 +1354,7 @@ function fillNewCargoTable(sheet, data) {
       {
         horizontal: "right",
         wrapText: false,
-        numFmt: "0.000",
+        numFmt: "0.######",
       }
     );
 
@@ -1425,7 +1428,7 @@ function fillNewCargoTable(sheet, data) {
     {
       horizontal: "center",
       wrapText: false,
-      numFmt: "0",
+      numFmt: "General",
     }
   );
 
@@ -1468,9 +1471,10 @@ function fillNewCargoTable(sheet, data) {
 
 function applyNewTransportationWarning(
   sheet,
-  isValid
+  isValid,
+  status
 ) {
-  if (isValid) {
+  if (status ? status !== "different" : isValid) {
     return;
   }
 
@@ -1483,6 +1487,51 @@ function applyNewTransportationWarning(
       argb: "FFFFC7CE",
     },
   };
+}
+
+function applyUnverifiedCellWarnings(sheet, data, formVersion) {
+  const requested = Array.isArray(data.unverified_cells)
+    ? data.unverified_cells
+    : [];
+  const allowed = formVersion === "new"
+    ? new Set(["I7","K7","N7","Q7","C9","C11","L11","X11","D13","D15","U15","D17","D19","D21","R21","C23","H23","U23","H25","N25","Q25","U25","E27","X27","E29","O40","U40","Z40","B35","B36","B37","B38","B39","K35","K36","K37","K38","K39","N35","N36","N37","N38","N39","O35","O36","O37","O38","O39","R35","R36","R37","R38","R39","U35","U36","U37","U38","U39","W35","W36","W37","W38","W39","X35","X36","X37","X38","X39","Z35","Z36","Z37","Z38","Z39"])
+    : new Set(["A3","C5","A7","F7","H7","C9","H9","C11","C13","C15","J15","C17","F17","J17","F19","G19","I19","J19","D21","K21","D23","G34","I34","L34","B29","B30","B31","B32","B33","E29","E30","E31","E32","E33","F29","F30","F31","F32","F33","G29","G30","G31","G32","G33","H29","H30","H31","H32","H33","I29","I30","I31","I32","I33","J29","J30","J31","J32","J33","K29","K30","K31","K32","K33","L29","L30","L31","L32","L33"]);
+
+  for (const address of requested) {
+    if (!allowed.has(address)) continue;
+    const cell = sheet.getCell(address);
+    cell.style = cloneStyle(cell.style || {});
+    cell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FFFFF2CC" },
+    };
+  }
+}
+
+function applyConfirmedDifferences(sheet, data, formVersion) {
+  const requested = Array.isArray(data.confirmed_differences)
+    ? data.confirmed_differences
+    : [];
+  const allowed = formVersion === "new"
+    ? new Set(["I7","K7","N7","Q7","C9","C11","L11","X11","D13","D15","U15","D17","D19","D21","R21","C23","H23","U23","H25","N25","Q25","U25","E27","X27","E29","O40","U40","Z40","B35","B36","B37","B38","B39","K35","K36","K37","K38","K39","N35","N36","N37","N38","N39","O35","O36","O37","O38","O39","R35","R36","R37","R38","R39","U35","U36","U37","U38","U39","W35","W36","W37","W38","W39","X35","X36","X37","X38","X39","Z35","Z36","Z37","Z38","Z39"])
+    : new Set(["A3","C5","A7","F7","H7","C9","H9","C11","C13","C15","J15","C17","F17","J17","F19","G19","I19","J19","D21","K21","D23","G34","I34","L34","B29","B30","B31","B32","B33","E29","E30","E31","E32","E33","F29","F30","F31","F32","F33","G29","G30","G31","G32","G33","H29","H30","H31","H32","H33","I29","I30","I31","I32","I33","J29","J30","J31","J32","J33","K29","K30","K31","K32","K33","L29","L30","L31","L32","L33"]);
+
+  for (const difference of requested) {
+    const address = String(difference?.cell || "").toUpperCase();
+    if (!allowed.has(address)) continue;
+    const cell = sheet.getCell(address);
+    cell.style = cloneStyle(cell.style || {});
+    cell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FFFFC7CE" },
+    };
+    const original = clean(difference.observed).slice(0, 200);
+    const correct = clean(difference.expected).slice(0, 200);
+    const source = clean(difference.source).slice(0, 40);
+    cell.note = `Було в ТТН: ${original}\nПравильно: ${correct}\nДжерело: ${source}`;
+  }
 }
 
 function fillNewWorkbook(sheet, data) {
@@ -1584,6 +1633,7 @@ function fillNewWorkbook(sheet, data) {
       data,
       "transportation.is_valid"
     ) === true;
+  const transportationStatus = clean(getByPath(data, "transportation.status"));
 
   setCell(
     sheet,
@@ -1593,7 +1643,8 @@ function fillNewWorkbook(sheet, data) {
 
   applyNewTransportationWarning(
     sheet,
-    transportationIsValid
+    transportationIsValid,
+    transportationStatus
   );
 
   /*
@@ -2264,7 +2315,7 @@ app.get("/health", (req, res) => {
   res.json({
     ok: true,
     service: "ttn-xlsx-service",
-    version: "6.1.0",
+    version: "6.4.0",
   });
 });
 
@@ -2357,6 +2408,9 @@ app.post(
       } else {
         fillOldWorkbook(sheet, data);
       }
+
+      applyUnverifiedCellWarnings(sheet, data, formVersion);
+      applyConfirmedDifferences(sheet, data, formVersion);
 
       workbook.calcProperties.fullCalcOnLoad = true;
       workbook.calcProperties.forceFullCalc = true;
@@ -2609,6 +2663,6 @@ app.post(
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(
-    `TTN XLSX/DOCX service v6.1.0 is running on port ${PORT}`
+    `TTN XLSX/DOCX service v6.4.0 is running on port ${PORT}`
   );
 });
