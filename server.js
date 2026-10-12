@@ -2105,6 +2105,8 @@ function buildApplicationAliases(data) {
     "carrier_signer",
     "carrier_director",
   ]);
+  aliases.carrier_signer_position = firstValue(data, ["carrier_signer_position"]) ||
+    (/^(ФОП|Фізична особа)/i.test(aliases.carrier_full_name) ? "ФОП" : "Директор");
 
   aliases.manager_phone = firstValue(data, ["manager_phone"]);
   aliases.manager_name = firstValue(data, ["manager_name"]);
